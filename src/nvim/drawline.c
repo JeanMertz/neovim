@@ -1646,7 +1646,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
         if (n_extra <= 0 && virt_inline_i < kv_size(virt_inline)) {
           VirtTextChunk vtc = kv_A(virt_inline, virt_inline_i);
           p_extra = (char_u *)vtc.text;
-          n_extra = (int)STRLEN(p_extra);
+          n_extra = (int)strlen(p_extra);
           c_extra = NUL;
           c_final = NUL;
           extra_attr = vtc.hl_id ? syn_id2attr(vtc.hl_id) : 0;
