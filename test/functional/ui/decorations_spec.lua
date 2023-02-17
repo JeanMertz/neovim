@@ -600,7 +600,7 @@ describe('extmark decorations', function()
       [24] = {bold = true};
       [25] = {background = Screen.colors.LightRed};
       [26] = {background=Screen.colors.DarkGrey, foreground=Screen.colors.LightGrey};
-      [27] = {background = Screen.colors.Plum1};
+      [27] = {foreground = Screen.colors.SlateBlue};
     }
 
     ns = meths.create_namespace 'test'
@@ -997,54 +997,84 @@ end]]
       ]])
   end)
 
-  it('avoids redraw issue #20651', function()
-    exec_lua[[
-      vim.cmd.normal'10oXXX'
-      vim.cmd.normal'gg'
-      local ns = vim.api.nvim_create_namespace('ns')
-
-      local bufnr = vim.api.nvim_create_buf(false, true)
-      vim.api.nvim_open_win(bufnr, false, { relative = 'win', height = 1, width = 1, row = 0, col = 0 })
-
-      vim.api.nvim_create_autocmd('CursorMoved', { callback = function()
-        local row = vim.api.nvim_win_get_cursor(0)[1] - 1
-        vim.api.nvim_buf_set_extmark(0, ns, row, 0, { id = 1 })
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, {})
-        vim.schedule(function()
-          vim.api.nvim_buf_set_extmark(0, ns, row, 0, {
-            id = 1,
-            virt_text = {{'HELLO', 'Normal'}},
-          })
-        end)
-      end
-      })
-    ]]
-
-    for _ = 1, 3 do
-      helpers.sleep(10)
-      feed 'j'
-    end
-
+  it('can have virtual text of inline position', function()
+    insert(example_text)
+    feed 'gg'
     screen:expect{grid=[[
-      {27: }                                                 |
-      XXX                                               |
-      XXX                                               |
-      ^XXX HELLO                                         |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      XXX                                               |
-      {1:~                                                 }|
+      ^for _,item in ipairs(items) do                    |
+          local text, hl_id_cell, count = unpack(item)  |
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+          end                                           |
+          for _ = 1, (count or 1) do                    |
+              local cell = line[colpos]                 |
+              cell.text = text                          |
+              cell.hl_id = hl_id                        |
+              colpos = colpos+1                         |
+          end                                           |
+      end                                               |
       {1:~                                                 }|
       {1:~                                                 }|
                                                         |
     ]]}
 
-  end)
+    meths.buf_set_extmark(0, ns, 1, 14, {virt_text={{': ', 'Special'}, {'string', 'Type'}}, virt_text_pos='inline'})
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do                    |
+          local text{27:: }{3:string}, hl_id_cell, count = unpack|
+      (item)                                            |
+          if hl_id_cell ~= nil then                     |
+              hl_id = hl_id_cell                        |
+          end                                           |
+          for _ = 1, (count or 1) do                    |
+              local cell = line[colpos]                 |
+              cell.text = text                          |
+              cell.hl_id = hl_id                        |
+              colpos = colpos+1                         |
+          end                                           |
+      end                                               |
+      {1:~                                                 }|
+                                                        |
+    ]]}
 
+    screen:try_resize(55, 15)
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do                         |
+          local text{27:: }{3:string}, hl_id_cell, count = unpack(item|
+      )                                                      |
+          if hl_id_cell ~= nil then                          |
+              hl_id = hl_id_cell                             |
+          end                                                |
+          for _ = 1, (count or 1) do                         |
+              local cell = line[colpos]                      |
+              cell.text = text                               |
+              cell.hl_id = hl_id                             |
+              colpos = colpos+1                              |
+          end                                                |
+      end                                                    |
+      {1:~                                                      }|
+                                                             |
+    ]]}
+
+    screen:try_resize(56, 15)
+    screen:expect{grid=[[
+      ^for _,item in ipairs(items) do                          |
+          local text{27:: }{3:string}, hl_id_cell, count = unpack(item)|
+          if hl_id_cell ~= nil then                           |
+              hl_id = hl_id_cell                              |
+          end                                                 |
+          for _ = 1, (count or 1) do                          |
+              local cell = line[colpos]                       |
+              cell.text = text                                |
+              cell.hl_id = hl_id                              |
+              colpos = colpos+1                               |
+          end                                                 |
+      end                                                     |
+      {1:~                                                       }|
+      {1:~                                                       }|
+                                                              |
+    ]]}
+  end)
 end)
 
 describe('decorations: virtual lines', function()
