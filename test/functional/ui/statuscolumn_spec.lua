@@ -375,6 +375,51 @@ describe('statuscolumn', function()
       {1:wrapped 1 9}aaaaaaaa                                  |
                                                            |
     ]])
+    -- Also test virt_lines at the end of buffer
+    exec_lua([[
+      local ns = vim.api.nvim_create_namespace("ns")
+      vim.api.nvim_buf_set_extmark(0, ns, 15, 0, { virt_lines = {{{"END", ""}}} })
+    ]])
+    feed('Gzz')
+    screen:expect([[
+      {1:buffer  0 13}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 13}aaaaaaaaa                                |
+      {1:buffer  0 14}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 14}aaaaaaaaa                                |
+      {1:buffer  0 15}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      {1:wrapped 1 15}aaaaaaaaa                                |
+      {4:buffer  0 16}{5:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {4:wrapped 1 16}{5:aaaaaaaaa                                }|
+      {1:virtual-1 16}END                                      |
+      {0:~                                                    }|
+      {0:~                                                    }|
+      {0:~                                                    }|
+      {0:~                                                    }|
+                                                           |
+    ]])
+    -- Also test virt_lines when 'cpoptions' includes "n"
+    exec_lua([[
+      vim.opt.cpoptions:append("n")
+      local ns = vim.api.nvim_create_namespace("ns")
+      vim.api.nvim_buf_set_extmark(0, ns, 14, 0, { virt_lines = {{{"virt_line1", ""}}} })
+      vim.api.nvim_buf_set_extmark(0, ns, 14, 0, { virt_lines = {{{"virt_line2", ""}}} })
+    ]])
+    screen:expect([[
+      {1:buffer  0 13}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaa                                            |
+      {1:buffer  0 14}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaa                                            |
+      {1:buffer  0 15}aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa|
+      aaaaaaaaa                                            |
+      {1:virtual-2 15}virt_line1                               |
+      {1:virtual-2 15}virt_line2                               |
+      {1:buffer  0 16}{5:^aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}|
+      {5:aaaaaaaaa                                            }|
+      {1:virtual-1 16}END                                      |
+      {0:~                                                    }|
+      {0:~                                                    }|
+                                                           |
+    ]])
   end)
 
   it("works with 'statuscolumn' clicks", function()
@@ -439,7 +484,6 @@ describe('statuscolumn', function()
       vim.api.nvim_buf_set_extmark(0, ns, 7, 0, {
         virt_lines_leftcol = true, virt_lines = {{{"virt", ""}}} })
     ]])
-    feed('lh')  -- force update cursor row
     screen:expect([[
                 4 aaaaa                                    |
                 5 aaaaa                                    |
@@ -475,6 +519,100 @@ describe('statuscolumn', function()
       ---------9 aaaaa                                     |
       ~                                                    |
       ~                                                    |
+                                                           |
+    ]])
+  end)
+
+  it('works with cmdwin', function()
+    feed(':set stc=%l<CR>q:k$')
+    screen:expect([[
+      7 aaaaa                                              |
+      8 aaaaa                                              |
+      9 aaaaa                                              |
+      10aaaaa                                              |
+      [No Name] [+]                                        |
+      :1set stc=%^l                                         |
+      :2                                                   |
+      ~                                                    |
+      ~                                                    |
+      ~                                                    |
+      ~                                                    |
+      ~                                                    |
+      [Command Line]                                       |
+      :                                                    |
+    ]])
+  end)
+
+  it("has correct width when toggling '(relative)number'", function()
+    screen:try_resize(screen._width, 6)
+    command('call setline(1, repeat(["aaaaa"], 100))')
+    command('set relativenumber')
+    command([[set stc=%{!&nu&&!&rnu?'':&rnu?v:relnum?v:relnum:&nu?v:lnum:'0':v:lnum}]])
+    screen:expect([[
+      1  aaaaa                                             |
+      8  ^aaaaa                                             |
+      1  aaaaa                                             |
+      2  aaaaa                                             |
+      3  aaaaa                                             |
+                                                           |
+    ]])
+    -- width correctly estimated with "w_nrwidth_line_count" when setting 'stc'
+    command([[set stc=%{!&nu&&!&rnu?'':&rnu?v:relnum?v:relnum:&nu?v:lnum:'0':v:lnum}]])
+    screen:expect_unchanged()
+    -- zero width when disabling 'number'
+    command('set norelativenumber nonumber')
+    screen:expect([[
+      aaaaa                                                |
+      ^aaaaa                                                |
+      aaaaa                                                |
+      aaaaa                                                |
+      aaaaa                                                |
+                                                           |
+    ]])
+    -- width correctly estimated with "w_nrwidth_line_count" when setting 'nu'
+    command('set number')
+    screen:expect([[
+      7  aaaaa                                             |
+      8  ^aaaaa                                             |
+      9  aaaaa                                             |
+      10 aaaaa                                             |
+      11 aaaaa                                             |
+                                                           |
+    ]])
+  end)
+
+  it("has correct width with custom sign column when (un)placing signs", function()
+    screen:try_resize(screen._width, 6)
+    exec_lua([[
+      vim.cmd.norm('gg')
+      vim.o.signcolumn = 'no'
+      vim.fn.sign_define('sign', { text = 'ss' })
+      _G.StatusCol = function()
+        local s = vim.fn.sign_getplaced(1)[1].signs
+        local sign = ''
+        if #s > 0 then
+          sign = vim.v.lnum == 5 and 'ss' or '  '
+        end
+        return vim.v.lnum .. '%=' .. sign
+      end
+      vim.o.statuscolumn = "%!v:lua.StatusCol()"
+      vim.fn.sign_place(0, '', 'sign', 1, { lnum = 5 })
+    ]])
+    screen:expect([[
+      1   ^aaaaa                                            |
+      2   aaaaa                                            |
+      3   aaaaa                                            |
+      4   aaaaa                                            |
+      5 ssaaaaa                                            |
+                                                           |
+    ]])
+    command('sign unplace 1')
+    screen:expect([[
+      1 ^aaaaa                                              |
+      2 aaaaa                                              |
+      3 aaaaa                                              |
+      4 aaaaa                                              |
+      5 aaaaa                                              |
                                                            |
     ]])
   end)

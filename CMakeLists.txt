@@ -3,7 +3,7 @@
 #   best practices (3.0+): https://gist.github.com/mbinna/c61dbb39bca0e4fb7d1f73b0d66a4fd1
 #   pitfalls: https://izzys.casa/2019/02/everything-you-never-wanted-to-know-about-cmake/
 
-# Version should match the tested CMAKE_URL in .github/workflows/ci.yml.
+# Version should match the tested CMAKE_URL in .github/workflows/build.yml.
 cmake_minimum_required(VERSION 3.10)
 
 # Can be removed once minimum version is at least 3.15
@@ -22,14 +22,13 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 include(CheckCCompilerFlag)
 include(CheckCSourceCompiles)
+include(FindPackageHandleStandardArgs)
 include(InstallHelpers)
-include(LuaHelpers) # Find Lua interpreter
+include(LuaHelpers)
 include(PreventInTreeBuilds)
 include(Util)
 
 set(TOUCHES_DIR ${PROJECT_BINARY_DIR}/touches)
-
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 find_program(CCACHE_PRG ccache)
 if(CCACHE_PRG)
@@ -38,23 +37,9 @@ endif()
 
 # Prefer our bundled versions of dependencies.
 if(DEFINED ENV{DEPS_BUILD_DIR})
-  if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD")
-    # pkg-config 29.2 has a bug on OpenBSD which causes it to drop any paths that
-    # *contain* system include paths. To avoid this, we prefix what would be
-    # "/usr/include" as "/_usr/include".
-    # This check is also performed in the cmake.deps/CMakeLists.txt and in the
-    # else clause following here.
-    # https://github.com/neovim/neovim/pull/14745#issuecomment-860201794
-    set(DEPS_PREFIX "$ENV{DEPS_BUILD_DIR}/_usr" CACHE PATH "Path prefix for finding dependencies")
-  else()
-    set(DEPS_PREFIX "$ENV{DEPS_BUILD_DIR}/usr" CACHE PATH "Path prefix for finding dependencies")
-  endif()
+  set(DEPS_PREFIX "$ENV{DEPS_BUILD_DIR}/usr" CACHE PATH "Path prefix for finding dependencies")
 else()
-  if(CMAKE_SYSTEM_NAME MATCHES "OpenBSD")
-    set(DEPS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/.deps/_usr" CACHE PATH "Path prefix for finding dependencies")
-  else()
-    set(DEPS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/.deps/usr" CACHE PATH "Path prefix for finding dependencies")
-  endif()
+  set(DEPS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/.deps/usr" CACHE PATH "Path prefix for finding dependencies")
   # When running from within CLion or Visual Studio,
   # build bundled dependencies automatically.
   if(NOT EXISTS ${DEPS_PREFIX}
@@ -84,9 +69,8 @@ else()
 endif()
 
 list(INSERT CMAKE_PREFIX_PATH 0 ${DEPS_PREFIX})
-set(ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:${DEPS_PREFIX}/lib/pkgconfig")
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(APPLE)
   # If the macOS deployment target is not set manually (via $MACOSX_DEPLOYMENT_TARGET),
   # fall back to local system version. Needs to be done both here and in cmake.deps.
   if(NOT CMAKE_OSX_DEPLOYMENT_TARGET)
@@ -98,7 +82,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   message(STATUS "Using deployment target ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 
-if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(WIN32 OR APPLE)
   # Ignore case when comparing filenames on Windows and Mac.
   set(CASE_INSENSITIVE_FILENAME TRUE)
   # Enable fixing case-insensitive filenames for Windows and Mac.
@@ -121,14 +105,14 @@ set_default_buildtype()
 # If not in a git repo (e.g., a tarball) these tokens define the complete
 # version string, else they are combined with the result of `git describe`.
 set(NVIM_VERSION_MAJOR 0)
-set(NVIM_VERSION_MINOR 9)
+set(NVIM_VERSION_MINOR 10)
 set(NVIM_VERSION_PATCH 0)
 set(NVIM_VERSION_PRERELEASE "-dev") # for package maintainers
 
 # API level
-set(NVIM_API_LEVEL 11)         # Bump this after any API change.
+set(NVIM_API_LEVEL 11)        # Bump this after any API change.
 set(NVIM_API_LEVEL_COMPAT 0)  # Adjust this after a _breaking_ API change.
-set(NVIM_API_PRERELEASE true)
+set(NVIM_API_PRERELEASE false)
 
 # Default to -O2 on release builds.
 if(CMAKE_C_FLAGS_RELEASE MATCHES "-O3")
@@ -136,37 +120,36 @@ if(CMAKE_C_FLAGS_RELEASE MATCHES "-O3")
   string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
 endif()
 
-if(CMAKE_C_COMPILER_ID MATCHES "GNU")
-  check_c_compiler_flag(-Og HAS_OG_FLAG)
-else()
-  set(HAS_OG_FLAG 0)
-endif()
-
-#
 # Build-type: RelWithDebInfo
-#
-if(HAS_OG_FLAG)
-  set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -Og -g")
+
+# /Og means something different in MSVC
+if(CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+   set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -Og -g")
 endif()
 # We _want_ assertions in RelWithDebInfo build-type.
 if(CMAKE_C_FLAGS_RELWITHDEBINFO MATCHES DNDEBUG)
   string(REPLACE "-DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+  string(REPLACE "/DNDEBUG" "" CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}")
+  string(REPLACE "  " " " CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO}") # Remove duplicate whitespace
 endif()
 
 option(LOG_LIST_ACTIONS "Add list actions logging" OFF)
 
-option(CLANG_ASAN_UBSAN "Enable Clang address & undefined behavior sanitizer for nvim binary." OFF)
-option(CLANG_MSAN "Enable Clang memory sanitizer for nvim binary." OFF)
-option(CLANG_TSAN "Enable Clang thread sanitizer for nvim binary." OFF)
+option(ENABLE_ASAN_UBSAN "Enable Clang address & undefined behavior sanitizer for nvim binary." OFF)
+option(LOG_DEBUG "Enable debug log messages even in a release build" OFF)
+option(ENABLE_MSAN "Enable Clang memory sanitizer for nvim binary." OFF)
+option(ENABLE_TSAN "Enable Clang thread sanitizer for nvim binary." OFF)
 
-if((CLANG_ASAN_UBSAN AND CLANG_MSAN)
-    OR (CLANG_ASAN_UBSAN AND CLANG_TSAN)
-    OR (CLANG_MSAN AND CLANG_TSAN))
+if((ENABLE_ASAN_UBSAN AND ENABLE_MSAN)
+    OR (ENABLE_ASAN_UBSAN AND ENABLE_TSAN)
+    OR (ENABLE_MSAN AND ENABLE_TSAN))
   message(FATAL_ERROR "Sanitizers cannot be enabled simultaneously")
 endif()
 
-if((CLANG_ASAN_UBSAN OR CLANG_MSAN OR CLANG_TSAN) AND NOT CMAKE_C_COMPILER_ID MATCHES "Clang")
-  message(FATAL_ERROR "Sanitizers are only supported for Clang")
+if(ENABLE_ASAN_UBSAN OR ENABLE_MSAN OR ENABLE_TSAN)
+  if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_C_COMPILER_ID MATCHES "GNU")
+    message(FATAL_ERROR "Sanitizers are only supported for Clang and GCC")
+  endif()
 endif()
 
 # Place targets in bin/ or lib/ for all build configurations
@@ -272,7 +255,7 @@ add_glob_target(
   TARGET lintsh
   COMMAND ${SHELLCHECK_PRG}
   FLAGS -x -a
-  GLOB_DIRS scripts ci
+  GLOB_DIRS scripts
   GLOB_PAT *.sh
   EXCLUDE
     scripts/pvscheck.sh

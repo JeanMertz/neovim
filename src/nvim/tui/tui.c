@@ -60,27 +60,14 @@
 #define LINUXSET0C "\x1b[?0c"
 #define LINUXSET1C "\x1b[?1c"
 
-#ifdef NVIM_UNIBI_HAS_VAR_FROM
-# define UNIBI_SET_NUM_VAR(var, num) \
+#define UNIBI_SET_NUM_VAR(var, num) \
   do { \
     (var) = unibi_var_from_num((num)); \
   } while (0)
-# define UNIBI_SET_STR_VAR(var, str) \
+#define UNIBI_SET_STR_VAR(var, str) \
   do { \
     (var) = unibi_var_from_str((str)); \
   } while (0)
-#else
-# define UNIBI_SET_NUM_VAR(var, num) \
-  do { \
-    (var).p = NULL; \
-    (var).i = (num); \
-  } while (0)
-# define UNIBI_SET_STR_VAR(var, str) \
-  do { \
-    (var).i = INT_MIN; \
-    (var).p = str; \
-  } while (0)
-#endif
 
 typedef struct {
   int top, bot, left, right;
@@ -1109,8 +1096,8 @@ void tui_set_mode(TUIData *tui, ModeShape mode)
       // Hopefully the user's default cursor color is inverse.
       unibi_out_ext(tui, tui->unibi_ext.reset_cursor_color);
     } else {
+      char hexbuf[8];
       if (tui->set_cursor_color_as_str) {
-        char hexbuf[8];
         snprintf(hexbuf, 7 + 1, "#%06x", aep.rgb_bg_color);
         UNIBI_SET_STR_VAR(tui->params[0], hexbuf);
       } else {
@@ -1147,7 +1134,7 @@ void tui_mode_change(TUIData *tui, String mode, Integer mode_idx)
   // If stdin is not a TTY, the LHS of pipe may change the state of the TTY
   // after calling uv_tty_set_mode. So, set the mode of the TTY again here.
   // #13073
-  if (tui->is_starting && tui->input.in_fd == STDERR_FILENO) {
+  if (tui->is_starting && !stdin_isatty) {
     int ret = uv_tty_set_mode(&tui->output_handle.tty, UV_TTY_MODE_NORMAL);
     if (ret) {
       ELOG("uv_tty_set_mode failed: %s", uv_strerror(ret));

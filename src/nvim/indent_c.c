@@ -525,7 +525,9 @@ static bool cin_is_cpp_namespace(const char *s)
 
   s = cin_skipcomment(s);
 
-  if (strncmp(s, "inline", 6) == 0 && (s[6] == NUL || !vim_iswordc((uint8_t)s[6]))) {
+  // skip over "inline" and "export" in any order
+  while ((strncmp(s, "inline", 6) == 0 || strncmp(s, "export", 6) == 0)
+         && (s[6] == NUL || !vim_iswordc((uint8_t)s[6]))) {
     s = cin_skipcomment(skipwhite(s + 6));
   }
 
@@ -2529,8 +2531,6 @@ int get_c_indent(void)
                 break;
               }
 
-              l = get_cursor_line_ptr();
-
               // If we're in a comment or raw string now, skip to
               // the start of it.
               trypos = ind_find_start_CORS(NULL);
@@ -2540,9 +2540,9 @@ int get_c_indent(void)
                 continue;
               }
 
-              //
+              l = get_cursor_line_ptr();
+
               // Skip preprocessor directives and blank lines.
-              //
               if (cin_ispreproc_cont(&l, &curwin->w_cursor.lnum, &amount)) {
                 continue;
               }
@@ -2640,8 +2640,6 @@ int get_c_indent(void)
                   break;
                 }
 
-                l = get_cursor_line_ptr();
-
                 // If we're in a comment or raw string now, skip
                 // to the start of it.
                 trypos = ind_find_start_CORS(NULL);
@@ -2650,6 +2648,8 @@ int get_c_indent(void)
                   curwin->w_cursor.col = 0;
                   continue;
                 }
+
+                l = get_cursor_line_ptr();
 
                 // Skip preprocessor directives and blank lines.
                 if (cin_ispreproc_cont(&l, &curwin->w_cursor.lnum, &amount)) {
@@ -2916,11 +2916,15 @@ int get_c_indent(void)
               trypos = NULL;
             }
 
+            l = get_cursor_line_ptr();
+
             // If we are looking for ',', we also look for matching
             // braces.
-            if (trypos == NULL && terminated == ','
-                && find_last_paren(l, '{', '}')) {
-              trypos = find_start_brace();
+            if (trypos == NULL && terminated == ',') {
+              if (find_last_paren(l, '{', '}')) {
+                trypos = find_start_brace();
+              }
+              l = get_cursor_line_ptr();
             }
 
             if (trypos != NULL) {
@@ -2951,6 +2955,7 @@ int get_c_indent(void)
                 curwin->w_cursor.lnum--;
                 curwin->w_cursor.col = 0;
               }
+              l = get_cursor_line_ptr();
             }
 
             // Get indent and pointer to text for current line,

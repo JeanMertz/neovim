@@ -66,7 +66,6 @@
 #include "nvim/plines.h"
 #include "nvim/pos.h"
 #include "nvim/quickfix.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/state.h"
 #include "nvim/statusline.h"
@@ -97,7 +96,7 @@ typedef enum {
   WEE_TRIGGER_LEAVE_AUTOCMDS = 0x10,
 } wee_flags_T;
 
-static char e_cannot_split_window_when_closing_buffer[]
+static const char e_cannot_split_window_when_closing_buffer[]
   = N_("E1159: Cannot split a window when closing the buffer");
 
 static char *m_onlyone = N_("Already only one window");
@@ -835,7 +834,7 @@ void win_config_float(win_T *wp, FloatConfig fconfig)
   }
 
   if (!ui_has(kUIMultigrid)) {
-    wp->w_height = MIN(wp->w_height, Rows - 1 - win_border_height(wp));
+    wp->w_height = MIN(wp->w_height, Rows - win_border_height(wp));
     wp->w_width = MIN(wp->w_width, Columns - win_border_width(wp));
   }
 
@@ -900,7 +899,7 @@ void win_check_anchored_floats(win_T *win)
 /// Return the number of fold columns to display
 int win_fdccol_count(win_T *wp)
 {
-  const char *fdc = (const char *)wp->w_p_fdc;
+  const char *fdc = wp->w_p_fdc;
 
   // auto:<NUM>
   if (strncmp(fdc, "auto", 4) == 0) {
@@ -993,14 +992,26 @@ void ui_ext_win_viewport(win_T *wp)
       // interact with incomplete final line? Diff filler lines?
       botline = wp->w_buffer->b_ml.ml_line_count;
     }
+    int scroll_delta = 0;
+    if (wp->w_viewport_last_topline > line_count) {
+      scroll_delta -= wp->w_viewport_last_topline - line_count;
+      wp->w_viewport_last_topline = line_count;
+    }
+    if (wp->w_topline < wp->w_viewport_last_topline) {
+      scroll_delta -= plines_m_win(wp, wp->w_topline, wp->w_viewport_last_topline - 1);
+    } else if (wp->w_topline > wp->w_viewport_last_topline
+               && wp->w_topline <= line_count) {
+      scroll_delta += plines_m_win(wp, wp->w_viewport_last_topline, wp->w_topline - 1);
+    }
     ui_call_win_viewport(wp->w_grid_alloc.handle, wp->handle, wp->w_topline - 1,
                          botline, wp->w_cursor.lnum - 1, wp->w_cursor.col,
-                         line_count);
+                         line_count, scroll_delta);
     wp->w_viewport_invalid = false;
+    wp->w_viewport_last_topline = wp->w_topline;
   }
 }
 
-/// If "split_disallowed" is set given an error and return FAIL.
+/// If "split_disallowed" is set give an error and return FAIL.
 /// Otherwise return OK.
 static int check_split_disallowed(void)
 {
@@ -1899,8 +1910,8 @@ static void win_rotate(bool upwards, int count)
     }
   }
 
-  win_T *wp1;
-  win_T *wp2;
+  win_T *wp1 = NULL;
+  win_T *wp2 = NULL;
 
   while (count--) {
     if (upwards) {              // first window becomes last window
@@ -2406,7 +2417,7 @@ static void win_equal_rec(win_T *next_curwin, bool current, frame_T *topfr, int 
   }
 }
 
-static void leaving_window(win_T *const win)
+void leaving_window(win_T *const win)
   FUNC_ATTR_NONNULL_ALL
 {
   // Only matters for a prompt window.
@@ -4813,7 +4824,7 @@ static void win_enter_ext(win_T *const wp, const int flags)
 
   // Might need to scroll the old window before switching, e.g., when the
   // cursor was moved.
-  if (*p_spk == 'c') {
+  if (*p_spk == 'c' && !curwin_invalid) {
     update_topline(curwin);
   }
 
@@ -5038,6 +5049,7 @@ static win_T *win_alloc(win_T *after, bool hidden)
   new_wp->w_floating = 0;
   new_wp->w_float_config = FLOAT_CONFIG_INIT;
   new_wp->w_viewport_invalid = true;
+  new_wp->w_viewport_last_topline = 1;
 
   new_wp->w_ns_hl = -1;
 
@@ -7410,7 +7422,7 @@ static int int_cmp(const void *a, const void *b)
 /// Handle setting 'colorcolumn' or 'textwidth' in window "wp".
 ///
 /// @return error message, NULL if it's OK.
-char *check_colorcolumn(win_T *wp)
+const char *check_colorcolumn(win_T *wp)
 {
   if (wp->w_buffer == NULL) {
     return NULL;      // buffer was closed

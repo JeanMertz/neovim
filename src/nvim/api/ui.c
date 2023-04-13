@@ -113,6 +113,10 @@ void remote_ui_disconnect(uint64_t channel_id)
   kv_destroy(data->call_buf);
   pmap_del(uint64_t)(&connected_uis, channel_id);
   ui_detach_impl(ui, channel_id);
+
+  // Destroy `ui`.
+  XFREE_CLEAR(ui->term_name);
+  XFREE_CLEAR(ui->term_background);
   xfree(ui);
 }
 
@@ -163,15 +167,9 @@ void nvim_ui_attach(uint64_t channel_id, Integer width, Integer height, Dictiona
   UI *ui = xcalloc(1, sizeof(UI));
   ui->width = (int)width;
   ui->height = (int)height;
-  ui->pum_nlines = 0;
-  ui->pum_pos = false;
-  ui->pum_width = 0.0;
-  ui->pum_height = 0.0;
   ui->pum_row = -1.0;
   ui->pum_col = -1.0;
   ui->rgb = true;
-  ui->override = false;
-
   CLEAR_FIELD(ui->ui_ext);
 
   for (size_t i = 0; i < options.size; i++) {
@@ -254,7 +252,7 @@ void nvim_ui_detach(uint64_t channel_id, Error *err)
   remote_ui_disconnect(channel_id);
 }
 
-// TODO(bfredl): use me to detach a specifc ui from the server
+// TODO(bfredl): use me to detach a specific ui from the server
 void remote_ui_stop(UI *ui)
 {}
 
@@ -320,6 +318,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
       return;
     });
     set_tty_option("term", string_to_cstr(value.data.string));
+    ui->term_name = string_to_cstr(value.data.string);
     return;
   }
 
@@ -328,6 +327,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
       return;
     });
     t_colors = (int)value.data.integer;
+    ui->term_colors = (int)value.data.integer;
     return;
   }
 
@@ -336,6 +336,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
       return;
     });
     set_tty_background(value.data.string.data);
+    ui->term_background = string_to_cstr(value.data.string);
     return;
   }
 
@@ -359,6 +360,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
       return;
     });
     stdin_isatty = value.data.boolean;
+    ui->stdin_tty = value.data.boolean;
     return;
   }
 
@@ -367,6 +369,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
       return;
     });
     stdout_isatty = value.data.boolean;
+    ui->stdout_tty = value.data.boolean;
     return;
   }
 
@@ -382,7 +385,7 @@ static void ui_set_option(UI *ui, bool init, String name, Object value, Error *e
       });
       bool boolval = value.data.boolean;
       if (!init && i == kUILinegrid && boolval != ui->ui_ext[i]) {
-        // There shouldn't be a reason for an UI to do this ever
+        // There shouldn't be a reason for a UI to do this ever
         // so explicitly don't support this.
         api_set_error(err, kErrorTypeValidation, "ext_linegrid option cannot be changed");
       }
@@ -724,8 +727,8 @@ void remote_ui_hl_attr_define(UI *ui, Integer id, HlAttrs rgb_attrs, HlAttrs cte
   ADD_C(args, INTEGER_OBJ(id));
   MAXSIZE_TEMP_DICT(rgb, HLATTRS_DICT_SIZE);
   MAXSIZE_TEMP_DICT(cterm, HLATTRS_DICT_SIZE);
-  hlattrs2dict(&rgb, rgb_attrs, true);
-  hlattrs2dict(&cterm, rgb_attrs, false);
+  hlattrs2dict(&rgb, NULL, rgb_attrs, true, false);
+  hlattrs2dict(&cterm, NULL, rgb_attrs, false, false);
   ADD_C(args, DICTIONARY_OBJ(rgb));
   ADD_C(args, DICTIONARY_OBJ(cterm));
 
@@ -748,7 +751,7 @@ void remote_ui_highlight_set(UI *ui, int id)
   }
   data->hl_id = id;
   MAXSIZE_TEMP_DICT(dict, HLATTRS_DICT_SIZE);
-  hlattrs2dict(&dict, syn_attr2entry(id), ui->rgb);
+  hlattrs2dict(&dict, NULL, syn_attr2entry(id), ui->rgb, false);
   ADD_C(args, DICTIONARY_OBJ(dict));
   push_call(ui, "highlight_set", args);
 }
@@ -840,7 +843,7 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
         uint32_t csize = (repeat > 1) ? 3 : ((attrs[i] != last_hl) ? 2 : 1);
         nelem++;
         mpack_array(buf, csize);
-        mpack_str(buf, (const char *)chunk[i]);
+        mpack_str(buf, chunk[i]);
         if (csize >= 2) {
           mpack_uint(buf, (uint32_t)attrs[i]);
           if (csize >= 3) {
@@ -870,7 +873,7 @@ void remote_ui_raw_line(UI *ui, Integer grid, Integer row, Integer startcol, Int
     for (int i = 0; i < endcol - startcol; i++) {
       remote_ui_cursor_goto(ui, row, startcol + i);
       remote_ui_highlight_set(ui, attrs[i]);
-      remote_ui_put(ui, (const char *)chunk[i]);
+      remote_ui_put(ui, chunk[i]);
       if (utf_ambiguous_width(utf_ptr2char((char *)chunk[i]))) {
         data->client_col = -1;  // force cursor update
       }
@@ -947,7 +950,7 @@ static Array translate_contents(UI *ui, Array contents, Arena *arena)
     int attr = (int)item.items[0].data.integer;
     if (attr) {
       Dictionary rgb_attrs = arena_dict(arena, HLATTRS_DICT_SIZE);
-      hlattrs2dict(&rgb_attrs, syn_attr2entry(attr), ui->rgb);
+      hlattrs2dict(&rgb_attrs, NULL, syn_attr2entry(attr), ui->rgb, false);
       ADD(new_item, DICTIONARY_OBJ(rgb_attrs));
     } else {
       ADD(new_item, DICTIONARY_OBJ((Dictionary)ARRAY_DICT_INIT));

@@ -10,6 +10,7 @@
 
 #include "nvim/ascii.h"
 #include "nvim/buffer.h"
+#include "nvim/change.h"
 #include "nvim/charset.h"
 #include "nvim/cmdexpand.h"
 #include "nvim/ex_cmds.h"
@@ -699,6 +700,8 @@ void fix_help_buffer(void)
         continue;
       }
 
+      int lnum_start = lnum;
+
       // Go through all directories in 'runtimepath', skipping
       // $VIMRUNTIME.
       char *p = p_rtp;
@@ -828,6 +831,11 @@ void fix_help_buffer(void)
           }
         }
         xfree(rt);
+      }
+      linenr_T appended = lnum - lnum_start;
+      if (appended) {
+        mark_adjust(lnum_start + 1, (linenr_T)MAXLNUM, appended, 0L, kExtmarkUndo);
+        changed_lines_buf(curbuf, lnum_start + 1, lnum_start + 1, appended);
       }
       break;
     }
@@ -968,7 +976,7 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
       }
       p1 = vim_strchr(IObuff, '*');       // find first '*'
       while (p1 != NULL) {
-        p2 = strchr((const char *)p1 + 1, '*');  // Find second '*'.
+        p2 = strchr(p1 + 1, '*');  // Find second '*'.
         if (p2 != NULL && p2 > p1 + 1) {         // Skip "*" and "**".
           for (s = p1 + 1; s < p2; s++) {
             if (*s == ' ' || *s == '\t' || *s == '|') {
@@ -1022,7 +1030,7 @@ static void helptags_one(char *dir, const char *ext, const char *tagfname, bool 
           *p2 = NUL;
           vim_snprintf(NameBuff, MAXPATHL,
                        _("E154: Duplicate tag \"%s\" in file %s/%s"),
-                       ((char_u **)ga.ga_data)[i], dir, p2 + 1);
+                       ((char **)ga.ga_data)[i], dir, p2 + 1);
           emsg(NameBuff);
           *p2 = '\t';
           break;
@@ -1146,7 +1154,7 @@ static void do_helptags(char *dirname, bool add_help_tags, bool ignore_writeerr)
       ext[1] = fname[5];
       ext[2] = fname[6];
     }
-    helptags_one(dirname, (char *)ext, (char *)fname, add_help_tags, ignore_writeerr);
+    helptags_one(dirname, ext, fname, add_help_tags, ignore_writeerr);
   }
 
   ga_clear(&ga);

@@ -47,15 +47,15 @@ describe('decorations providers', function()
 
   local function setup_provider(code)
     return exec_lua ([[
-      local a = vim.api
-      _G.ns1 = a.nvim_create_namespace "ns1"
+      local api = vim.api
+      _G.ns1 = api.nvim_create_namespace "ns1"
     ]] .. (code or [[
       beamtrace = {}
       local function on_do(kind, ...)
         table.insert(beamtrace, {kind, ...})
       end
     ]]) .. [[
-      a.nvim_set_decoration_provider(_G.ns1, {
+      api.nvim_set_decoration_provider(_G.ns1, {
         on_start = on_do; on_buf = on_do;
         on_win = on_do; on_line = on_do;
         on_end = on_do; _on_spell_nav = on_do;
@@ -75,8 +75,8 @@ describe('decorations providers', function()
     -- rather than append, which used to spin in an infinite loop allocating
     -- memory until nvim crashed/was killed.
     setup_provider([[
-      local ns2 = a.nvim_create_namespace "ns2"
-      a.nvim_set_decoration_provider(ns2, {})
+      local ns2 = api.nvim_create_namespace "ns2"
+      api.nvim_set_decoration_provider(ns2, {})
     ]])
     helpers.assert_alive()
   end)
@@ -132,12 +132,12 @@ describe('decorations providers', function()
   it('can have single provider', function()
     insert(mulholland)
     setup_provider [[
-      local hl = a.nvim_get_hl_id_by_name "ErrorMsg"
-      local test_ns = a.nvim_create_namespace "mulholland"
+      local hl = api.nvim_get_hl_id_by_name "ErrorMsg"
+      local test_ns = api.nvim_create_namespace "mulholland"
       function on_do(event, ...)
         if event == "line" then
           local win, buf, line = ...
-          a.nvim_buf_set_extmark(buf, test_ns, line, line,
+          api.nvim_buf_set_extmark(buf, test_ns, line, line,
                              { end_line = line, end_col = line+1,
                                hl_group = hl,
                                ephemeral = true
@@ -172,11 +172,11 @@ describe('decorations providers', function()
     ]]
 
     setup_provider [[
-      local ns = a.nvim_create_namespace "spell"
+      local ns = api.nvim_create_namespace "spell"
       beamtrace = {}
       local function on_do(kind, ...)
         if kind == 'win' or kind == 'spell' then
-          a.nvim_buf_set_extmark(0, ns, 0, 0, {
+          api.nvim_buf_set_extmark(0, ns, 0, 0, {
             end_row = 2,
             end_col = 23,
             spell = true,
@@ -330,12 +330,12 @@ describe('decorations providers', function()
     ]]}
 
     exec_lua [[
-      local a = vim.api
-      local thewin = a.nvim_get_current_win()
-      local ns2 = a.nvim_create_namespace 'ns2'
-      a.nvim_set_decoration_provider (ns2, {
+      local api = vim.api
+      local thewin = api.nvim_get_current_win()
+      local ns2 = api.nvim_create_namespace 'ns2'
+      api.nvim_set_decoration_provider (ns2, {
         on_win = function (_, win, buf)
-          a.nvim_set_hl_ns_fast(win == thewin and _G.ns1 or ns2)
+          api.nvim_set_hl_ns_fast(win == thewin and _G.ns1 or ns2)
         end;
       })
     ]]
@@ -436,12 +436,12 @@ describe('decorations providers', function()
   it('can have virtual text', function()
     insert(mulholland)
     setup_provider [[
-      local hl = a.nvim_get_hl_id_by_name "ErrorMsg"
-      local test_ns = a.nvim_create_namespace "mulholland"
+      local hl = api.nvim_get_hl_id_by_name "ErrorMsg"
+      local test_ns = api.nvim_create_namespace "mulholland"
       function on_do(event, ...)
         if event == "line" then
           local win, buf, line = ...
-          a.nvim_buf_set_extmark(buf, test_ns, line, 0, {
+          api.nvim_buf_set_extmark(buf, test_ns, line, 0, {
             virt_text = {{'+', 'ErrorMsg'}};
             virt_text_pos='overlay';
             ephemeral = true;
@@ -465,12 +465,12 @@ describe('decorations providers', function()
   it('can have virtual text of the style: right_align', function()
     insert(mulholland)
     setup_provider [[
-      local hl = a.nvim_get_hl_id_by_name "ErrorMsg"
-      local test_ns = a.nvim_create_namespace "mulholland"
+      local hl = api.nvim_get_hl_id_by_name "ErrorMsg"
+      local test_ns = api.nvim_create_namespace "mulholland"
       function on_do(event, ...)
         if event == "line" then
           local win, buf, line = ...
-          a.nvim_buf_set_extmark(buf, test_ns, line, 0, {
+          api.nvim_buf_set_extmark(buf, test_ns, line, 0, {
             virt_text = {{'+'}, {string.rep(' ', line+1), 'ErrorMsg'}};
             virt_text_pos='right_align';
             ephemeral = true;
@@ -494,12 +494,12 @@ describe('decorations providers', function()
   it('can highlight beyond EOL', function()
     insert(mulholland)
     setup_provider [[
-      local test_ns = a.nvim_create_namespace "veberod"
+      local test_ns = api.nvim_create_namespace "veberod"
       function on_do(event, ...)
         if event == "line" then
           local win, buf, line = ...
-          if string.find(a.nvim_buf_get_lines(buf, line, line+1, true)[1], "buf") then
-            a.nvim_buf_set_extmark(buf, test_ns, line, 0, {
+          if string.find(api.nvim_buf_get_lines(buf, line, line+1, true)[1], "buf") then
+            api.nvim_buf_set_extmark(buf, test_ns, line, 0, {
               end_line = line+1;
               hl_group = 'DiffAdd';
               hl_eol = true;
@@ -534,9 +534,9 @@ describe('decorations providers', function()
       local function on_do(kind, winid, bufnr, topline, botline_guess)
         if kind == 'win' then
           if topline < 100 and botline_guess > 100 then
-            vim.api.nvim_buf_set_extmark(bufnr, ns1, 99, -1, { sign_text = 'X' })
+            api.nvim_buf_set_extmark(bufnr, ns1, 99, -1, { sign_text = 'X' })
           else
-            vim.api.nvim_buf_clear_namespace(bufnr, ns1, 0, -1)
+            api.nvim_buf_clear_namespace(bufnr, ns1, 0, -1)
           end
         end
       end
@@ -600,7 +600,7 @@ describe('extmark decorations', function()
       [24] = {bold = true};
       [25] = {background = Screen.colors.LightRed};
       [26] = {background=Screen.colors.DarkGrey, foreground=Screen.colors.LightGrey};
-      [27] = {foreground = Screen.colors.SlateBlue};
+      [27] = {background = Screen.colors.Plum1};
     }
 
     ns = meths.create_namespace 'test'
@@ -983,6 +983,85 @@ end]]
     helpers.assert_alive()
   end)
 
+  it('can have virtual text of inline position', function()
+     insert(example_text)
+     feed 'gg'
+     screen:expect{grid=[[
+       ^for _,item in ipairs(items) do                    |
+           local text, hl_id_cell, count = unpack(item)  |
+           if hl_id_cell ~= nil then                     |
+               hl_id = hl_id_cell                        |
+           end                                           |
+           for _ = 1, (count or 1) do                    |
+               local cell = line[colpos]                 |
+               cell.text = text                          |
+               cell.hl_id = hl_id                        |
+               colpos = colpos+1                         |
+           end                                           |
+       end                                               |
+       {1:~                                                 }|
+       {1:~                                                 }|
+                                                         |
+     ]]}
+
+     meths.buf_set_extmark(0, ns, 1, 14, {virt_text={{': ', 'Special'}, {'string', 'Type'}}, virt_text_pos='inline'})
+     screen:expect{grid=[[
+       ^for _,item in ipairs(items) do                    |
+           local text{27:: }{3:string}, hl_id_cell, count = unpack|
+       (item)                                            |
+           if hl_id_cell ~= nil then                     |
+               hl_id = hl_id_cell                        |
+           end                                           |
+           for _ = 1, (count or 1) do                    |
+               local cell = line[colpos]                 |
+               cell.text = text                          |
+               cell.hl_id = hl_id                        |
+               colpos = colpos+1                         |
+           end                                           |
+       end                                               |
+       {1:~                                                 }|
+                                                         |
+     ]]}
+
+     screen:try_resize(55, 15)
+     screen:expect{grid=[[
+       ^for _,item in ipairs(items) do                         |
+           local text{27:: }{3:string}, hl_id_cell, count = unpack(item|
+       )                                                      |
+           if hl_id_cell ~= nil then                          |
+               hl_id = hl_id_cell                             |
+           end                                                |
+           for _ = 1, (count or 1) do                         |
+               local cell = line[colpos]                      |
+               cell.text = text                               |
+               cell.hl_id = hl_id                             |
+               colpos = colpos+1                              |
+           end                                                |
+       end                                                    |
+       {1:~                                                      }|
+                                                              |
+     ]]}
+
+     screen:try_resize(56, 15)
+     screen:expect{grid=[[
+       ^for _,item in ipairs(items) do                          |
+           local text{27:: }{3:string}, hl_id_cell, count = unpack(item)|
+           if hl_id_cell ~= nil then                           |
+               hl_id = hl_id_cell                              |
+           end                                                 |
+           for _ = 1, (count or 1) do                          |
+               local cell = line[colpos]                       |
+               cell.text = text                                |
+               cell.hl_id = hl_id                              |
+               colpos = colpos+1                               |
+           end                                                 |
+       end                                                     |
+       {1:~                                                       }|
+       {1:~                                                       }|
+                                                               |
+     ]]}
+   end)
+
   it('conceal #19007', function()
     screen:try_resize(50, 5)
     insert('foo\n')
@@ -997,84 +1076,131 @@ end]]
       ]])
   end)
 
-  it('can have virtual text of inline position', function()
-    insert(example_text)
-    feed 'gg'
+  it('avoids redraw issue #20651', function()
+    exec_lua[[
+      vim.cmd.normal'10oXXX'
+      vim.cmd.normal'gg'
+      local ns = vim.api.nvim_create_namespace('ns')
+
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_open_win(bufnr, false, { relative = 'win', height = 1, width = 1, row = 0, col = 0 })
+
+      vim.api.nvim_create_autocmd('CursorMoved', { callback = function()
+        local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+        vim.api.nvim_buf_set_extmark(0, ns, row, 0, { id = 1 })
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, true, {})
+        vim.schedule(function()
+          vim.api.nvim_buf_set_extmark(0, ns, row, 0, {
+            id = 1,
+            virt_text = {{'HELLO', 'Normal'}},
+          })
+        end)
+      end
+      })
+    ]]
+
+    for _ = 1, 3 do
+      helpers.sleep(10)
+      feed 'j'
+    end
+
     screen:expect{grid=[[
-      ^for _,item in ipairs(items) do                    |
-          local text, hl_id_cell, count = unpack(item)  |
-          if hl_id_cell ~= nil then                     |
-              hl_id = hl_id_cell                        |
-          end                                           |
-          for _ = 1, (count or 1) do                    |
-              local cell = line[colpos]                 |
-              cell.text = text                          |
-              cell.hl_id = hl_id                        |
-              colpos = colpos+1                         |
-          end                                           |
-      end                                               |
+      {27: }                                                 |
+      XXX                                               |
+      XXX                                               |
+      ^XXX HELLO                                         |
+      XXX                                               |
+      XXX                                               |
+      XXX                                               |
+      XXX                                               |
+      XXX                                               |
+      XXX                                               |
+      XXX                                               |
+      {1:~                                                 }|
       {1:~                                                 }|
       {1:~                                                 }|
                                                         |
     ]]}
 
-    meths.buf_set_extmark(0, ns, 1, 14, {virt_text={{': ', 'Special'}, {'string', 'Type'}}, virt_text_pos='inline'})
-    screen:expect{grid=[[
-      ^for _,item in ipairs(items) do                    |
-          local text{27:: }{3:string}, hl_id_cell, count = unpack|
-      (item)                                            |
-          if hl_id_cell ~= nil then                     |
-              hl_id = hl_id_cell                        |
-          end                                           |
-          for _ = 1, (count or 1) do                    |
-              local cell = line[colpos]                 |
-              cell.text = text                          |
-              cell.hl_id = hl_id                        |
-              colpos = colpos+1                         |
-          end                                           |
-      end                                               |
-      {1:~                                                 }|
-                                                        |
-    ]]}
-
-    screen:try_resize(55, 15)
-    screen:expect{grid=[[
-      ^for _,item in ipairs(items) do                         |
-          local text{27:: }{3:string}, hl_id_cell, count = unpack(item|
-      )                                                      |
-          if hl_id_cell ~= nil then                          |
-              hl_id = hl_id_cell                             |
-          end                                                |
-          for _ = 1, (count or 1) do                         |
-              local cell = line[colpos]                      |
-              cell.text = text                               |
-              cell.hl_id = hl_id                             |
-              colpos = colpos+1                              |
-          end                                                |
-      end                                                    |
-      {1:~                                                      }|
-                                                             |
-    ]]}
-
-    screen:try_resize(56, 15)
-    screen:expect{grid=[[
-      ^for _,item in ipairs(items) do                          |
-          local text{27:: }{3:string}, hl_id_cell, count = unpack(item)|
-          if hl_id_cell ~= nil then                           |
-              hl_id = hl_id_cell                              |
-          end                                                 |
-          for _ = 1, (count or 1) do                          |
-              local cell = line[colpos]                       |
-              cell.text = text                                |
-              cell.hl_id = hl_id                              |
-              colpos = colpos+1                               |
-          end                                                 |
-      end                                                     |
-      {1:~                                                       }|
-      {1:~                                                       }|
-                                                              |
-    ]]}
   end)
+
+  it('underline attribute with higher priority takes effect #22371', function()
+    screen:try_resize(50, 3)
+    insert('aaabbbaaa')
+    exec([[
+      hi TestUL gui=underline guifg=Blue
+      hi TestUC gui=undercurl guisp=Red
+      hi TestBold gui=bold
+    ]])
+    screen:set_default_attr_ids({
+      [0] = {bold = true, foreground = Screen.colors.Blue};
+      [1] = {underline = true, foreground = Screen.colors.Blue};
+      [2] = {undercurl = true, special = Screen.colors.Red};
+      [3] = {underline = true, foreground = Screen.colors.Blue, special = Screen.colors.Red};
+      [4] = {undercurl = true, foreground = Screen.colors.Blue, special = Screen.colors.Red};
+      [5] = {bold = true, underline = true, foreground = Screen.colors.Blue};
+      [6] = {bold = true, undercurl = true, special = Screen.colors.Red};
+    })
+
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 20 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestUC', priority = 30 })
+    screen:expect([[
+      {1:aaa}{4:bbb}{1:aa^a}                                         |
+      {0:~                                                 }|
+                                                        |
+    ]])
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 20 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestUL', priority = 30 })
+    screen:expect([[
+      {2:aaa}{3:bbb}{2:aa^a}                                         |
+      {0:~                                                 }|
+                                                        |
+    ]])
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 30 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestUC', priority = 20 })
+    screen:expect([[
+      {1:aaa}{3:bbb}{1:aa^a}                                         |
+      {0:~                                                 }|
+                                                        |
+    ]])
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 30 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestUL', priority = 20 })
+    screen:expect([[
+      {2:aaa}{4:bbb}{2:aa^a}                                         |
+      {0:~                                                 }|
+                                                        |
+    ]])
+
+    -- When only one highlight group has an underline attribute, it should always take effect.
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 20 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 30 })
+    screen:expect([[
+      {1:aaa}{5:bbb}{1:aa^a}                                         |
+      {0:~                                                 }|
+                                                        |
+    ]])
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUL', priority = 30 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 20 })
+    screen:expect_unchanged(true)
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 20 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 30 })
+    screen:expect([[
+      {2:aaa}{6:bbb}{2:aa^a}                                         |
+      {0:~                                                 }|
+                                                        |
+    ]])
+    meths.buf_clear_namespace(0, ns, 0, -1)
+    meths.buf_set_extmark(0, ns, 0, 0, { end_col = 9, hl_group = 'TestUC', priority = 30 })
+    meths.buf_set_extmark(0, ns, 0, 3, { end_col = 6, hl_group = 'TestBold', priority = 20 })
+    screen:expect_unchanged(true)
+  end)
+
 end)
 
 describe('decorations: virtual lines', function()
@@ -1200,6 +1326,7 @@ if (h->n_buckets < new_n_buckets) { // expand
     ]]}
 
     meths.buf_clear_namespace(0, ns, 0, -1)
+    -- Cursor should be drawn on the correct line. #22704
     screen:expect{grid=[[
       if (h->n_buckets < new_n_buckets) { // expand     |
         khkey_t *new_keys = (khkey_t *)                 |
@@ -1207,15 +1334,14 @@ if (h->n_buckets < new_n_buckets) { // expand
       hkey_t));                                         |
         h->keys = new_keys;                             |
         if (kh_is_map && val_size) {                    |
-          char *new_vals = {3:krealloc}( h->vals_buf, new_n_|
-      buck^ets * val_size);                              |
+          ^char *new_vals = {3:krealloc}( h->vals_buf, new_n_|
+      buckets * val_size);                              |
           h->vals_buf = new_vals;                       |
         }                                               |
       }                                                 |
                                                         |
     ]]}
   end)
-
 
   it('works with text at the beginning of the buffer', function()
     insert(example_text)

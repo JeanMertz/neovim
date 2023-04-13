@@ -150,7 +150,7 @@ typedef struct matchinf_S {
 
   // for when checking a compound word
   int mi_compoff;                       // start of following word offset
-  char_u mi_compflags[MAXWLEN];         // flags for compound words used
+  uint8_t mi_compflags[MAXWLEN];        // flags for compound words used
   int mi_complen;                       // nr of compound words used
   int mi_compextra;                     // nr of COMPOUNDROOT words
 
@@ -444,7 +444,7 @@ static void find_word(matchinf_T *mip, int mode)
     // Check for word with matching case in keep-case tree.
     ptr = mip->mi_word;
     flen = 9999;                    // no case folding, always enough bytes
-    byts = (uint8_t *)slang->sl_kbyts;
+    byts = slang->sl_kbyts;
     idxs = slang->sl_kidxs;
 
     if (mode == FIND_KEEPCOMPOUND) {
@@ -455,7 +455,7 @@ static void find_word(matchinf_T *mip, int mode)
     // Check for case-folded in case-folded tree.
     ptr = mip->mi_fword;
     flen = mip->mi_fwordlen;        // available case-folded bytes
-    byts = (uint8_t *)slang->sl_fbyts;
+    byts = slang->sl_fbyts;
     idxs = slang->sl_fidxs;
 
     if (mode == FIND_PREFIX) {
@@ -737,7 +737,7 @@ static void find_word(matchinf_T *mip, int mode)
         // If the word ends the sequence of compound flags of the
         // words must match with one of the COMPOUNDRULE items and
         // the number of syllables must not be too large.
-        mip->mi_compflags[mip->mi_complen] = (char_u)((unsigned)flags >> 24);
+        mip->mi_compflags[mip->mi_complen] = (uint8_t)((unsigned)flags >> 24);
         mip->mi_compflags[mip->mi_complen + 1] = NUL;
         if (word_ends) {
           char fword[MAXWLEN] = { 0 };
@@ -961,7 +961,7 @@ bool can_compound(slang_T *slang, const char *word, const uint8_t *flags)
 // compound rule.  This is used to stop trying a compound if the flags
 // collected so far can't possibly match any compound rule.
 // Caller must check that slang->sl_comprules is not NULL.
-bool match_compoundrule(slang_T *slang, const char_u *compflags)
+bool match_compoundrule(slang_T *slang, const uint8_t *compflags)
 {
   // loop over all the COMPOUNDRULE entries
   for (char *p = (char *)slang->sl_comprules; *p != NUL; p++) {
@@ -1062,7 +1062,7 @@ static void find_prefix(matchinf_T *mip, int mode)
   int wlen = 0;
   slang_T *slang = mip->mi_lp->lp_slang;
 
-  uint8_t *byts = (uint8_t *)slang->sl_pbyts;
+  uint8_t *byts = slang->sl_pbyts;
   if (byts == NULL) {
     return;                     // array is empty
   }
@@ -1203,7 +1203,7 @@ bool no_spell_checking(win_T *wp)
 static void decor_spell_nav_start(win_T *wp)
 {
   decor_state = (DecorState){ 0 };
-  decor_redraw_reset(wp->w_buffer, &decor_state);
+  decor_redraw_reset(wp, &decor_state);
 }
 
 static bool decor_spell_nav_col(win_T *wp, linenr_T lnum, linenr_T *decor_lnum, int col,
@@ -1211,10 +1211,10 @@ static bool decor_spell_nav_col(win_T *wp, linenr_T lnum, linenr_T *decor_lnum, 
 {
   if (*decor_lnum != lnum) {
     decor_providers_invoke_spell(wp, lnum - 1, col, lnum - 1, -1, decor_error);
-    decor_redraw_line(wp->w_buffer, lnum - 1, &decor_state);
+    decor_redraw_line(wp, lnum - 1, &decor_state);
     *decor_lnum = lnum;
   }
-  decor_redraw_col(wp->w_buffer, col, col, false, &decor_state);
+  decor_redraw_col(wp, col, col, false, &decor_state);
   return decor_state.spell == kTrue;
 }
 
@@ -1316,7 +1316,7 @@ size_t spell_move_to(win_T *wp, int dir, bool allwords, bool curline, hlf_T *att
     // Copy the line into "buf" and append the start of the next line if
     // possible.  Note: this ml_get_buf() may make "line" invalid, check
     // for empty line first.
-    bool empty_line = *skipwhite((const char *)line) == NUL;
+    bool empty_line = *skipwhite(line) == NUL;
     STRCPY(buf, line);
     if (lnum < wp->w_buffer->b_ml.ml_line_count) {
       spell_cat_line(buf + strlen(buf),
@@ -1743,12 +1743,12 @@ void count_common_word(slang_T *lp, char *word, int len, uint8_t count)
   wordcount_T *wc;
   hash_T hash = hash_hash(p);
   const size_t p_len = strlen(p);
-  hashitem_T *hi = hash_lookup(&lp->sl_wordcount, (const char *)p, p_len, hash);
+  hashitem_T *hi = hash_lookup(&lp->sl_wordcount, p, p_len, hash);
   if (HASHITEM_EMPTY(hi)) {
     wc = xmalloc(offsetof(wordcount_T, wc_word) + p_len + 1);
     memcpy(wc->wc_word, p, p_len + 1);
     wc->wc_count = count;
-    hash_add_item(&lp->sl_wordcount, hi, (char *)wc->wc_word, hash);
+    hash_add_item(&lp->sl_wordcount, hi, wc->wc_word, hash);
   } else {
     wc = HI2WC(hi);
     wc->wc_count = (uint16_t)(wc->wc_count + count);
@@ -2354,8 +2354,8 @@ void clear_spell_chartab(spelltab_T *sp)
   CLEAR_FIELD(sp->st_isu);
 
   for (int i = 0; i < 256; i++) {
-    sp->st_fold[i] = (char_u)i;
-    sp->st_upper[i] = (char_u)i;
+    sp->st_fold[i] = (uint8_t)i;
+    sp->st_upper[i] = (uint8_t)i;
   }
 
   // We include digits. A word shouldn't start with a digit, but handling
@@ -2366,11 +2366,11 @@ void clear_spell_chartab(spelltab_T *sp)
   for (int i = 'A'; i <= 'Z'; i++) {
     sp->st_isw[i] = true;
     sp->st_isu[i] = true;
-    sp->st_fold[i] = (char_u)(i + 0x20);
+    sp->st_fold[i] = (uint8_t)(i + 0x20);
   }
   for (int i = 'a'; i <= 'z'; i++) {
     sp->st_isw[i] = true;
-    sp->st_upper[i] = (char_u)(i - 0x20);
+    sp->st_upper[i] = (uint8_t)(i - 0x20);
   }
 }
 
@@ -2391,8 +2391,8 @@ void init_spell_chartab(void)
     // The folded/upper-cased value is different between latin1 and
     // utf8 for 0xb5, causing E763 for no good reason.  Use the latin1
     // value for utf-8 to avoid this.
-    spelltab.st_fold[i] = (f < 256) ? (char_u)f : (char_u)i;
-    spelltab.st_upper[i] = (u < 256) ? (char_u)u : (char_u)i;
+    spelltab.st_fold[i] = (f < 256) ? (uint8_t)f : (uint8_t)i;
+    spelltab.st_upper[i] = (u < 256) ? (uint8_t)u : (uint8_t)i;
   }
 }
 
@@ -2845,7 +2845,7 @@ static void spell_soundfold_wsal(slang_T *slang, const char *inword, char *res)
   // Remove accents, if wanted.  We actually remove all non-word characters.
   // But keep white space.
   int wordlen = 0;
-  for (const char *s = (char *)inword; *s != NUL;) {
+  for (const char *s = inword; *s != NUL;) {
     const char *t = s;
     int c = mb_cptr2char_adv(&s);
     if (slang->sl_rem_accents) {
@@ -3129,9 +3129,9 @@ void ex_spellinfo(exarg_T *eap)
   for (int lpi = 0; lpi < curwin->w_s->b_langp.ga_len && !got_int; lpi++) {
     langp_T *const lp = LANGP_ENTRY(curwin->w_s->b_langp, lpi);
     msg_puts("file: ");
-    msg_puts((const char *)lp->lp_slang->sl_fname);
+    msg_puts(lp->lp_slang->sl_fname);
     msg_putchar('\n');
-    const char *const p = (const char *)lp->lp_slang->sl_info;
+    const char *const p = lp->lp_slang->sl_info;
     if (p != NULL) {
       msg_puts(p);
       msg_putchar('\n');
@@ -3194,7 +3194,7 @@ void spell_dump_compl(char *pat, int ic, Direction *dir, int dumpflags_arg)
   int curi[MAXWLEN];
   char word[MAXWLEN];
   int c;
-  char *byts;
+  uint8_t *byts;
   idx_T *idxs;
   linenr_T lnum = 0;
   int depth;
@@ -3296,7 +3296,7 @@ void spell_dump_compl(char *pat, int ic, Direction *dir, int dumpflags_arg)
           // Do one more byte at this node.
           n = arridx[depth] + curi[depth];
           curi[depth]++;
-          c = (uint8_t)byts[n];
+          c = byts[n];
           if (c == 0 || depth >= MAXWLEN - 1) {
             // End of word or reached maximum length, deal with the
             // word.
@@ -3462,7 +3462,7 @@ static linenr_T dump_prefixes(slang_T *slang, char *word, char *pat, Direction *
     has_word_up = true;
   }
 
-  char *byts = slang->sl_pbyts;
+  uint8_t *byts = slang->sl_pbyts;
   idx_T *idxs = slang->sl_pidxs;
   if (byts != NULL) {           // array not is empty
     // Loop over all prefixes, building them byte-by-byte in prefix[].
@@ -3472,7 +3472,7 @@ static linenr_T dump_prefixes(slang_T *slang, char *word, char *pat, Direction *
     curi[0] = 1;
     while (depth >= 0 && !got_int) {
       int n = arridx[depth];
-      int len = (uint8_t)byts[n];
+      int len = byts[n];
       if (curi[depth] > len) {
         // Done all bytes at this node, go up one level.
         depth--;
@@ -3481,7 +3481,7 @@ static linenr_T dump_prefixes(slang_T *slang, char *word, char *pat, Direction *
         // Do one more byte at this node.
         n += curi[depth];
         curi[depth]++;
-        c = (uint8_t)byts[n];
+        c = byts[n];
         if (c == 0) {
           // End of prefix, find out how many IDs there are.
           int i;
@@ -3619,9 +3619,9 @@ bool valid_spellfile(const char *val)
   return true;
 }
 
-char *did_set_spell_option(bool is_spellfile)
+const char *did_set_spell_option(bool is_spellfile)
 {
-  char *errmsg = NULL;
+  const char *errmsg = NULL;
 
   if (is_spellfile) {
     int l = (int)strlen(curwin->w_s->b_p_spf);
@@ -3646,7 +3646,7 @@ char *did_set_spell_option(bool is_spellfile)
 
 /// Set curbuf->b_cap_prog to the regexp program for 'spellcapcheck'.
 /// Return error message when failed, NULL when OK.
-char *compile_cap_prog(synblock_T *synblock)
+const char *compile_cap_prog(synblock_T *synblock)
   FUNC_ATTR_NONNULL_ALL
 {
   regprog_T *rp = synblock->b_cap_prog;

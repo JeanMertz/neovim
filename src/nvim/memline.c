@@ -79,8 +79,8 @@
 #include "nvim/os/time.h"
 #include "nvim/path.h"
 #include "nvim/pos.h"
-#include "nvim/screen.h"
 #include "nvim/spell.h"
+#include "nvim/statusline.h"
 #include "nvim/strings.h"
 #include "nvim/types.h"
 #include "nvim/ui.h"
@@ -179,19 +179,19 @@ enum {
 // different machines. b0_magic_* is used to check the byte order and size of
 // variables, because the rest of the swap file is not portable.
 struct block0 {
-  char_u b0_id[2];                   ///< ID for block 0: BLOCK0_ID0 and BLOCK0_ID1.
+  char b0_id[2];                     ///< ID for block 0: BLOCK0_ID0 and BLOCK0_ID1.
   char b0_version[10];               // Vim version string
-  char_u b0_page_size[4];            // number of bytes per page
-  char_u b0_mtime[4];                // last modification time of file
-  char_u b0_ino[4];                  // inode of b0_fname
-  char_u b0_pid[4];                  // process id of creator (or 0)
+  char b0_page_size[4];              // number of bytes per page
+  char b0_mtime[4];                  // last modification time of file
+  char b0_ino[4];                    // inode of b0_fname
+  char b0_pid[4];                    // process id of creator (or 0)
   char b0_uname[B0_UNAME_SIZE];      // name of user (uid if no name)
   char b0_hname[B0_HNAME_SIZE];      // host name (if it has a name)
   char b0_fname[B0_FNAME_SIZE_ORG];  // name of file being edited
   long b0_magic_long;                // check for byte order of long
   int b0_magic_int;                  // check for byte order of int
   int16_t b0_magic_short;            // check for byte order of short
-  char_u b0_magic_char;              // check for last char
+  char b0_magic_char;                // check for last char
 };
 
 // Note: b0_dirty and b0_flags are put at the end of the file name.  For very
@@ -242,6 +242,10 @@ typedef enum {
 
 #ifdef INCLUDE_GENERATED_DECLARATIONS
 # include "memline.c.generated.h"
+#endif
+
+#if __has_feature(address_sanitizer)
+# define ML_GET_ALLOC_LINES
 #endif
 
 /// Open a new memline for "buf".
@@ -347,7 +351,7 @@ int ml_open(buf_T *buf)
   dp->db_index[0] = --dp->db_txt_start;         // at end of block
   dp->db_free -= 1 + (unsigned)INDEX_SIZE;
   dp->db_line_count = 1;
-  *((char_u *)dp + dp->db_txt_start) = NUL;     // empty line
+  *((char *)dp + dp->db_txt_start) = NUL;     // empty line
 
   return OK;
 
@@ -535,7 +539,8 @@ void ml_close(buf_T *buf, int del_file)
     return;
   }
   mf_close(buf->b_ml.ml_mfp, del_file);       // close the .swp file
-  if (buf->b_ml.ml_line_lnum != 0 && (buf->b_ml.ml_flags & ML_LINE_DIRTY)) {
+  if (buf->b_ml.ml_line_lnum != 0
+      && (buf->b_ml.ml_flags & (ML_LINE_DIRTY | ML_ALLOCATED))) {
     xfree(buf->b_ml.ml_line_ptr);
   }
   xfree(buf->b_ml.ml_stack);
@@ -1060,7 +1065,7 @@ void ml_recover(bool checkext)
           }
 
           // make sure there is a NUL at the end of the block
-          *((char_u *)dp + dp->db_txt_end - 1) = NUL;
+          *((char *)dp + dp->db_txt_end - 1) = NUL;
 
           // check number of lines in block
           // if wrong, use count in data block
@@ -1346,7 +1351,7 @@ int recover_names(char *fname, int list, int nr, char **fname_out)
           // print the swap file name
           msg_outnum((long)++file_count);
           msg_puts(".    ");
-          msg_puts((const char *)path_tail(files[i]));
+          msg_puts(path_tail(files[i]));
           msg_putchar('\n');
           (void)swapfile_info(files[i]);
         }
@@ -1503,7 +1508,7 @@ static time_t swapfile_info(char *fname)
         if (char_to_long(b0.b0_pid) != 0L) {
           msg_puts(_("\n        process ID: "));
           msg_outnum(char_to_long(b0.b0_pid));
-          if (swapfile_process_running(&b0, (const char *)fname)) {
+          if (swapfile_process_running(&b0, fname)) {
             msg_puts(_(" (STILL RUNNING)"));
             process_still_running = true;
           }
@@ -1780,7 +1785,6 @@ char *ml_get_buf(buf_T *buf, linenr_T lnum, bool will_change)
       recursive--;
     }
     ml_flush_line(buf);
-    buf->b_ml.ml_flags &= ~ML_LINE_DIRTY;
 errorret:
     STRCPY(questions, "???");
     buf->b_ml.ml_line_lnum = lnum;
@@ -1824,18 +1828,36 @@ errorret:
     char *ptr = (char *)dp + (dp->db_index[lnum - buf->b_ml.ml_locked_low] & DB_INDEX_MASK);
     buf->b_ml.ml_line_ptr = ptr;
     buf->b_ml.ml_line_lnum = lnum;
-    buf->b_ml.ml_flags &= ~ML_LINE_DIRTY;
+    buf->b_ml.ml_flags &= ~(ML_LINE_DIRTY | ML_ALLOCATED);
   }
   if (will_change) {
     buf->b_ml.ml_flags |= (ML_LOCKED_DIRTY | ML_LOCKED_POS);
+#ifdef ML_GET_ALLOC_LINES
+    if (buf->b_ml.ml_flags & ML_ALLOCATED) {
+      // can't make the change in the data block
+      buf->b_ml.ml_flags |= ML_LINE_DIRTY;
+    }
+#endif
     ml_add_deleted_len_buf(buf, buf->b_ml.ml_line_ptr, -1);
   }
 
+#ifdef ML_GET_ALLOC_LINES
+  if ((buf->b_ml.ml_flags & (ML_LINE_DIRTY | ML_ALLOCATED)) == 0) {
+    // make sure the text is in allocated memory
+    buf->b_ml.ml_line_ptr = xstrdup(buf->b_ml.ml_line_ptr);
+    buf->b_ml.ml_flags |= ML_ALLOCATED;
+    if (will_change) {
+      // can't make the change in the data block
+      buf->b_ml.ml_flags |= ML_LINE_DIRTY;
+    }
+  }
+#endif
   return buf->b_ml.ml_line_ptr;
 }
 
 /// Check if a line that was just obtained by a call to ml_get
 /// is in allocated memory.
+/// This ignores ML_ALLOCATED to get the same behavior as without ML_GET_ALLOC_LINES.
 int ml_line_alloced(void)
 {
   return curbuf->b_ml.ml_flags & ML_LINE_DIRTY;
@@ -2352,22 +2374,21 @@ int ml_replace_buf(buf_T *buf, linenr_T lnum, char *line, bool copy)
     return FAIL;
   }
 
-  bool readlen = true;
-
   if (copy) {
     line = xstrdup(line);
   }
-  if (buf->b_ml.ml_line_lnum != lnum) {  // other line buffered
-    ml_flush_line(buf);  // flush it
-  } else if (buf->b_ml.ml_flags & ML_LINE_DIRTY) {  // same line allocated
-    ml_add_deleted_len_buf(buf, buf->b_ml.ml_line_ptr, -1);
-    readlen = false;  // already added the length
 
-    xfree(buf->b_ml.ml_line_ptr);  // free it
+  if (buf->b_ml.ml_line_lnum != lnum) {
+    // another line is buffered, flush it
+    ml_flush_line(buf);
   }
 
-  if (readlen && kv_size(buf->update_callbacks)) {
+  if (kv_size(buf->update_callbacks)) {
     ml_add_deleted_len_buf(buf, ml_get_buf(buf, lnum, false), -1);
+  }
+
+  if (buf->b_ml.ml_flags & (ML_LINE_DIRTY | ML_ALLOCATED)) {
+    xfree(buf->b_ml.ml_line_ptr);  // free allocated line
   }
 
   buf->b_ml.ml_line_ptr = line;
@@ -2692,8 +2713,11 @@ static void ml_flush_line(buf_T *buf)
     xfree(new_line);
 
     entered = false;
+  } else if (buf->b_ml.ml_flags & ML_ALLOCATED) {
+    xfree(buf->b_ml.ml_line_ptr);
   }
 
+  buf->b_ml.ml_flags &= ~(ML_LINE_DIRTY | ML_ALLOCATED);
   buf->b_ml.ml_line_lnum = 0;
   buf->b_ml.ml_line_offset = 0;
 }
@@ -3532,19 +3556,21 @@ static bool fnamecmp_ino(char *fname_c, char *fname_s, long ino_block0)
 
 /// Move a long integer into a four byte character array.
 /// Used for machine independency in block zero.
-static void long_to_char(long n, char_u *s)
+static void long_to_char(long n, char *s_in)
 {
-  s[0] = (char_u)(n & 0xff);
+  uint8_t *s= (uint8_t *)s_in;
+  s[0] = (uint8_t)(n & 0xff);
   n = (unsigned)n >> 8;
-  s[1] = (char_u)(n & 0xff);
+  s[1] = (uint8_t)(n & 0xff);
   n = (unsigned)n >> 8;
-  s[2] = (char_u)(n & 0xff);
+  s[2] = (uint8_t)(n & 0xff);
   n = (unsigned)n >> 8;
-  s[3] = (char_u)(n & 0xff);
+  s[3] = (uint8_t)(n & 0xff);
 }
 
-static long char_to_long(const char_u *s)
+static long char_to_long(const char *s_in)
 {
+  const uint8_t *s = (uint8_t *)s_in;
   long retval;
 
   retval = s[3];
@@ -3962,7 +3988,7 @@ int inc(pos_T *lp)
   if (lp->col != MAXCOL) {
     const char *const p = ml_get_pos(lp);
     if (*p != NUL) {  // still within line, move to next char (may be NUL)
-      const int l = utfc_ptr2len((char *)p);
+      const int l = utfc_ptr2len(p);
 
       lp->col += l;
       return ((p[l] != NUL) ? 0 : 2);

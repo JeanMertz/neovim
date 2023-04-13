@@ -36,7 +36,6 @@
 #include "nvim/plines.h"
 #include "nvim/pos.h"
 #include "nvim/regexp.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/strings.h"
 #include "nvim/textformat.h"
@@ -428,7 +427,7 @@ int get_indent_str_vtab(const char *ptr, long ts, long *vts, bool list)
       } else {
         // In list mode, when tab is not set, count screen char width
         // for Tab, displays: ^I
-        count += ptr2cells((char *)ptr);
+        count += ptr2cells(ptr);
       }
     } else if (*ptr == ' ') {
       count++;  // count a space for one
@@ -803,11 +802,12 @@ bool briopt_check(win_T *wp)
 int get_breakindent_win(win_T *wp, char *line)
   FUNC_ATTR_NONNULL_ALL
 {
-  static int prev_indent = 0;  // Cached indent value.
-  static long prev_ts = 0L;  // Cached tabstop value.
-  static const char *prev_line = NULL;  // cached pointer to line.
-  static varnumber_T prev_tick = 0;  // Changedtick of cached value.
-  static long *prev_vts = NULL;  // Cached vartabs values.
+  static int prev_indent = 0;  // cached indent value
+  static long prev_ts = 0L;  // cached tabstop value
+  static int prev_fnum = 0;  // cached buffer number
+  static char *prev_line = NULL;  // cached copy of "line"
+  static varnumber_T prev_tick = 0;  // changedtick of cached value
+  static long *prev_vts = NULL;  // cached vartabs values
   static int prev_list = 0;  // cached list value
   static int prev_listopt = 0;  // cached w_p_briopt_list value
   static char *prev_flp = NULL;  // cached formatlistpat value
@@ -818,16 +818,24 @@ int get_breakindent_win(win_T *wp, char *line)
                           && (vim_strchr(p_cpo, CPO_NUMCOL) == NULL) ? number_width(wp) + 1 : 0);
 
   // used cached indent, unless
-  // - line pointer changed
+  // - buffer changed
   // - 'tabstop' changed
+  // - buffer was changed
   // - 'briopt_list changed' changed or
   // - 'formatlistpattern' changed
-  if (prev_line != line || prev_ts != wp->w_buffer->b_p_ts
+  // - line changed
+  // - 'vartabs' changed
+  if (prev_fnum != wp->w_buffer->b_fnum
+      || prev_ts != wp->w_buffer->b_p_ts
       || prev_tick != buf_get_changedtick(wp->w_buffer)
       || prev_listopt != wp->w_briopt_list
-      || (prev_flp == NULL || (strcmp(prev_flp, get_flp_value(wp->w_buffer)) != 0))
+      || prev_flp == NULL
+      || strcmp(prev_flp, get_flp_value(wp->w_buffer)) != 0
+      || prev_line == NULL || strcmp(prev_line, line) != 0
       || prev_vts != wp->w_buffer->b_p_vts_array) {
-    prev_line = line;
+    prev_fnum = wp->w_buffer->b_fnum;
+    xfree(prev_line);
+    prev_line = xstrdup(line);
     prev_ts = wp->w_buffer->b_p_ts;
     prev_tick = buf_get_changedtick(wp->w_buffer);
     prev_vts = wp->w_buffer->b_p_vts_array;

@@ -11,6 +11,10 @@
 #include <string.h>
 #include <sys/types.h>
 
+#ifdef NVIM_VENDOR_BIT
+# include "bit.h"
+#endif
+
 #include "auto/config.h"
 #include "cjson/lua_cjson.h"
 #include "mpack/lmpack.h"
@@ -18,10 +22,10 @@
 #include "nvim/api/private/helpers.h"
 #include "nvim/ascii.h"
 #include "nvim/buffer_defs.h"
-#include "nvim/eval.h"
 #include "nvim/eval/typval.h"
 #include "nvim/eval/typval_defs.h"
 #include "nvim/ex_eval.h"
+#include "nvim/fold.h"
 #include "nvim/globals.h"
 #include "nvim/lua/converter.h"
 #include "nvim/lua/spell.h"
@@ -33,6 +37,7 @@
 #include "nvim/memory.h"
 #include "nvim/pos.h"
 #include "nvim/regexp.h"
+#include "nvim/runtime.h"
 #include "nvim/types.h"
 #include "nvim/vim.h"
 
@@ -282,10 +287,8 @@ int nlua_regex(lua_State *lstate)
   const char *text = luaL_checkstring(lstate, 1);
   regprog_T *prog = NULL;
 
-  TRY_WRAP({
-    try_start();
-    prog = vim_regcomp((char *)text, RE_AUTO | RE_MAGIC | RE_STRICT);
-    try_end(&err);
+  TRY_WRAP(&err, {
+    prog = vim_regcomp(text, RE_AUTO | RE_MAGIC | RE_STRICT);
   });
 
   if (ERROR_SET(&err)) {
@@ -524,6 +527,31 @@ static int nlua_iconv(lua_State *lstate)
   return 1;
 }
 
+// Like 'zx' but don't call newFoldLevel()
+static int nlua_foldupdate(lua_State *lstate)
+{
+  curwin->w_foldinvalid = true;  // recompute folds
+  foldOpenCursor();
+
+  return 0;
+}
+
+// Access to internal functions. For use in runtime/
+static void nlua_state_add_internal(lua_State *const lstate)
+{
+  // _getvar
+  lua_pushcfunction(lstate, &nlua_getvar);
+  lua_setfield(lstate, -2, "_getvar");
+
+  // _setvar
+  lua_pushcfunction(lstate, &nlua_setvar);
+  lua_setfield(lstate, -2, "_setvar");
+
+  // _updatefolds
+  lua_pushcfunction(lstate, &nlua_foldupdate);
+  lua_setfield(lstate, -2, "_foldupdate");
+}
+
 void nlua_state_add_stdlib(lua_State *const lstate, bool is_thread)
 {
   if (!is_thread) {
@@ -558,14 +586,6 @@ void nlua_state_add_stdlib(lua_State *const lstate, bool is_thread)
     lua_setfield(lstate, -2, "__index");  // [meta]
     lua_pop(lstate, 1);  // don't use metatable now
 
-    // _getvar
-    lua_pushcfunction(lstate, &nlua_getvar);
-    lua_setfield(lstate, -2, "_getvar");
-
-    // _setvar
-    lua_pushcfunction(lstate, &nlua_setvar);
-    lua_setfield(lstate, -2, "_setvar");
-
     // vim.spell
     luaopen_spell(lstate);
     lua_setfield(lstate, -2, "spell");
@@ -574,6 +594,8 @@ void nlua_state_add_stdlib(lua_State *const lstate, bool is_thread)
     // depends on p_ambw, p_emoji
     lua_pushcfunction(lstate, &nlua_iconv);
     lua_setfield(lstate, -2, "iconv");
+
+    nlua_state_add_internal(lstate);
   }
 
   // vim.mpack
@@ -596,6 +618,13 @@ void nlua_state_add_stdlib(lua_State *const lstate, bool is_thread)
   // vim.json
   lua_cjson_new(lstate);
   lua_setfield(lstate, -2, "json");
+
+#ifdef NVIM_VENDOR_BIT
+  // if building with puc lua, use internal fallback for require'bit'
+  int top = lua_gettop(lstate);
+  luaopen_bit(lstate);
+  lua_settop(lstate, top);
+#endif
 }
 
 /// like luaL_error, but allow cleanup

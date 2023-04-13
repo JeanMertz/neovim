@@ -1,7 +1,4 @@
 if(MSVC)
-  if(USE_EXISTING_SRC_DIR)
-    unset(GETTEXT_URL)
-  endif()
   ExternalProject_Add(gettext
     URL ${GETTEXT_URL}
     URL_HASH SHA256=${GETTEXT_SHA256}
@@ -18,7 +15,6 @@ else()
   message(FATAL_ERROR "Trying to build gettext in an unsupported system ${CMAKE_SYSTEM_NAME}/${CMAKE_C_COMPILER_ID}")
 endif()
 
-list(APPEND THIRD_PARTY_DEPS gettext)
 if(USE_BUNDLED_LIBICONV)
   add_dependencies(gettext libiconv)
 endif()

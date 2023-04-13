@@ -1,7 +1,12 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
-#define EXTERN
+// Make sure extern symbols are exported on Windows
+#ifdef WIN32
+# define EXTERN __declspec(dllexport)
+#else
+# define EXTERN
+#endif
 #include <assert.h>
 #include <limits.h>
 #include <msgpack/pack.h>
@@ -41,7 +46,6 @@
 #include "nvim/highlight.h"
 #include "nvim/highlight_group.h"
 #include "nvim/keycodes.h"
-#include "nvim/locale.h"
 #include "nvim/log.h"
 #include "nvim/lua/executor.h"
 #include "nvim/macros.h"
@@ -60,6 +64,7 @@
 #include "nvim/optionstr.h"
 #include "nvim/os/fileio.h"
 #include "nvim/os/input.h"
+#include "nvim/os/lang.h"
 #include "nvim/os/os.h"
 #include "nvim/os/stdpaths_defs.h"
 #include "nvim/os/time.h"
@@ -182,22 +187,24 @@ void early_init(mparm_T *paramp)
 #ifdef MSWIN
   OSVERSIONINFO ovi;
   ovi.dwOSVersionInfoSize = sizeof(ovi);
-  // Disable warning about GetVersionExA being deprecated. There doesn't seem to be a conventient
+  // Disable warning about GetVersionExA being deprecated. There doesn't seem to be a convenient
   // replacement that doesn't add a ton of extra code as of writing this.
-# pragma warning(suppress : 4996)
+# ifdef _MSC_VER
+#  pragma warning(suppress : 4996)
   GetVersionEx(&ovi);
+# else
+  GetVersionEx(&ovi);
+# endif
   snprintf(windowsVersion, sizeof(windowsVersion), "%d.%d",
            (int)ovi.dwMajorVersion, (int)ovi.dwMinorVersion);
 #endif
 
   TIME_MSG("early init");
 
-#if defined(HAVE_LOCALE_H)
   // Setup to use the current locale (for ctype() and many other things).
   // NOTE: Translated messages with encodings other than latin1 will not
   // work until set_init_1() has been called!
   init_locale();
-#endif
 
   // tabpage local options (p_ch) must be set before allocating first tabpage.
   set_init_tablocal();
@@ -383,6 +390,7 @@ int main(int argc, char **argv)
   if (ui_client_channel_id) {
     ui_client_run(remote_ui);  // NORETURN
   }
+  assert(!ui_client_channel_id && !use_builtin_ui);
 
   // Wait for UIs to set up Nvim or show early messages
   // and prompts (--cmd, swapfile dialog, …).
@@ -583,13 +591,13 @@ int main(int argc, char **argv)
   set_vim_var_nr(VV_VIM_DID_ENTER, 1L);
   apply_autocmds(EVENT_VIMENTER, NULL, NULL, false, curbuf);
   TIME_MSG("VimEnter autocommands");
-  if (use_remote_ui || use_builtin_ui) {
-    do_autocmd_uienter(use_remote_ui ? CHAN_STDIO : 0, true);
+  if (use_remote_ui) {
+    do_autocmd_uienter(CHAN_STDIO, true);
     TIME_MSG("UIEnter autocommands");
   }
 
 #ifdef MSWIN
-  if (use_remote_ui || use_builtin_ui) {
+  if (use_remote_ui) {
     os_icon_init();
   }
   os_title_save();
@@ -1146,8 +1154,8 @@ static void command_line_scan(mparm_T *parmp)
       case 'h':    // "-h" give help message
         usage();
         os_exit(0);
-      case 'H':    // "-H" start in Hebrew mode: rl + hkmap set.
-        p_hkmap = true;
+      case 'H':    // "-H" start in Hebrew mode: rl + keymap=hebrew set.
+        set_option_value_give_err("keymap", 0L, "hebrew", 0);
         set_option_value_give_err("rl", 1L, NULL, 0);
         break;
       case 'M':    // "-M"  no changes or writing of files
@@ -1934,7 +1942,7 @@ static void do_system_initialization(void)
         dir_len += 1;
       }
       memcpy(vimrc + dir_len, path_tail, sizeof(path_tail));
-      if (do_source(vimrc, false, DOSO_NONE) != FAIL) {
+      if (do_source(vimrc, false, DOSO_NONE, NULL) != FAIL) {
         xfree(vimrc);
         xfree(config_dirs);
         return;
@@ -1946,7 +1954,7 @@ static void do_system_initialization(void)
 
 #ifdef SYS_VIMRC_FILE
   // Get system wide defaults, if the file name is defined.
-  (void)do_source(SYS_VIMRC_FILE, false, DOSO_NONE);
+  (void)do_source(SYS_VIMRC_FILE, false, DOSO_NONE, NULL);
 #endif
 }
 
@@ -1975,7 +1983,7 @@ static bool do_user_initialization(void)
 
   // init.lua
   if (os_path_exists(init_lua_path)
-      && do_source(init_lua_path, true, DOSO_VIMRC)) {
+      && do_source(init_lua_path, true, DOSO_VIMRC, NULL)) {
     if (os_path_exists(user_vimrc)) {
       semsg(_("E5422: Conflicting configs: \"%s\" \"%s\""), init_lua_path,
             user_vimrc);
@@ -1989,7 +1997,7 @@ static bool do_user_initialization(void)
   xfree(init_lua_path);
 
   // init.vim
-  if (do_source(user_vimrc, true, DOSO_VIMRC) != FAIL) {
+  if (do_source(user_vimrc, true, DOSO_VIMRC, NULL) != FAIL) {
     do_exrc = p_exrc;
     if (do_exrc) {
       do_exrc = (path_full_compare(VIMRC_FILE, user_vimrc, false, true) != kEqualFiles);
@@ -2015,7 +2023,7 @@ static bool do_user_initialization(void)
       memmove(vimrc, dir, dir_len);
       vimrc[dir_len] = PATHSEP;
       memmove(vimrc + dir_len + 1, path_tail, sizeof(path_tail));
-      if (do_source(vimrc, true, DOSO_VIMRC) != FAIL) {
+      if (do_source(vimrc, true, DOSO_VIMRC, NULL) != FAIL) {
         do_exrc = p_exrc;
         if (do_exrc) {
           do_exrc = (path_full_compare(VIMRC_FILE, vimrc, false, true) != kEqualFiles);
@@ -2081,7 +2089,7 @@ static void source_startup_scripts(const mparm_T *const parmp)
         || strequal(parmp->use_vimrc, "NORC")) {
       // Do nothing.
     } else {
-      if (do_source(parmp->use_vimrc, false, DOSO_NONE) != OK) {
+      if (do_source(parmp->use_vimrc, false, DOSO_NONE, NULL) != OK) {
         semsg(_("E282: Cannot read from \"%s\""), parmp->use_vimrc);
       }
     }
@@ -2114,7 +2122,7 @@ static int execute_env(char *env)
   current_sctx.sc_sid = SID_ENV;
   current_sctx.sc_seq = 0;
   current_sctx.sc_lnum = 0;
-  do_cmdline_cmd((char *)initstr);
+  do_cmdline_cmd(initstr);
 
   estack_pop();
   current_sctx = save_current_sctx;
@@ -2145,7 +2153,7 @@ static void print_mainerr(const char *errstr, const char *str)
   os_errmsg(_(errstr));
   if (str != NULL) {
     os_errmsg(": \"");
-    os_errmsg((char *)str);
+    os_errmsg(str);
     os_errmsg("\"");
   }
   os_errmsg(_("\nMore info with \""));

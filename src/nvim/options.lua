@@ -55,8 +55,6 @@ return {
       full_name='aleph', abbreviation='al',
       short_desc=N_("ASCII code of the letter Aleph (Hebrew)"),
       type='number', scope={'global'},
-      redraw={'curswant'},
-      varname='p_aleph',
       defaults={if_true=224}
     },
     {
@@ -415,7 +413,7 @@ return {
       alloced=true,
       redraw={'curswant'},
       varname='p_cms',
-      defaults={if_true="/*%s*/"}
+      defaults={if_true=""}
     },
     {
       full_name='compatible', abbreviation='cp',
@@ -1071,16 +1069,16 @@ return {
     },
     {
       full_name='hkmap', abbreviation='hk',
-      short_desc=N_("Hebrew keyboard mapping"),
+      short_desc=N_("No description"),
       type='bool', scope={'global'},
-      varname='p_hkmap',
+      varname='p_force_off',
       defaults={if_true=false}
     },
     {
       full_name='hkmapp', abbreviation='hkp',
-      short_desc=N_("phonetic Hebrew keyboard mapping"),
+      short_desc=N_("No description"),
       type='bool', scope={'global'},
-      varname='p_hkmapp',
+      varname='p_force_off',
       defaults={if_true=false}
     },
     {
@@ -1687,9 +1685,8 @@ return {
     },
     {
       full_name='pastetoggle', abbreviation='pt',
-      short_desc=N_("key code that causes 'paste' to toggle"),
+      short_desc=N_("No description"),
       type='string', scope={'global'},
-      varname='p_pt',
       defaults={if_true=""}
     },
     {
@@ -2029,7 +2026,7 @@ return {
       varname='p_sp',
       defaults={
         condition='MSWIN',
-        if_true=">%s 2>&1",
+        if_true="2>&1| tee",
         if_false="| tee",
       }
     },

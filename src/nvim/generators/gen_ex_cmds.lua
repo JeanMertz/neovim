@@ -41,7 +41,7 @@ static const uint16_t cmdidxs1[%u] = {
 -- Values in cmdidxs2[c1][c2] are relative to cmdidxs1[c1] so that they
 -- fit in a byte.
 local cmdidxs2_out = string.format([[
-static const char_u cmdidxs2[%u][%u] = {
+static const uint8_t cmdidxs2[%u][%u] = {
   /*           a   b   c   d   e   f   g   h   i   j   k   l   m   n   o   p   q   r   s   t   u   v   w   x   y   z */
 ]], a_to_z, a_to_z)
 
@@ -66,7 +66,6 @@ defsfile:write(string.format([[
 #include "nvim/ex_session.h"
 #include "nvim/help.h"
 #include "nvim/indent.h"
-#include "nvim/locale.h"
 #include "nvim/lua/executor.h"
 #include "nvim/mapping.h"
 #include "nvim/mark.h"
@@ -75,6 +74,7 @@ defsfile:write(string.format([[
 #include "nvim/message.h"
 #include "nvim/ops.h"
 #include "nvim/option.h"
+#include "nvim/os/lang.h"
 #include "nvim/profile.h"
 #include "nvim/quickfix.h"
 #include "nvim/runtime.h"

@@ -124,13 +124,13 @@ Each pull request must pass the automated builds on [Cirrus CI] and [GitHub Acti
 - If any tests fail, the build will fail. See [test/README.md#running-tests][run-tests] to run tests locally.
 - CI runs [ASan] and other analyzers.
     - To run valgrind locally: `VALGRIND=1 make test`
-    - To run Clang ASan/UBSan locally: `CC=clang make CMAKE_FLAGS="-DCLANG_ASAN_UBSAN=ON"`
+    - To run Clang ASan/UBSan locally: `CC=clang make CMAKE_FLAGS="-DENABLE_ASAN_UBSAN=ON"`
 - The [lint](#lint) build checks modified lines _and their immediate
   neighbors_, to encourage incrementally updating the legacy style to meet our
   [style](#style). (See [#3174][3174] for background.)
 - CI for FreeBSD runs on [Cirrus CI].
 - To see CI results faster in your PR, you can temporarily set `TEST_FILE` in
-  [ci.yml](https://github.com/neovim/neovim/blob/e35b9020b16985eee26e942f9a3f6b045bc3809b/.github/workflows/ci.yml#L205).
+  [test.yml](https://github.com/neovim/neovim/blob/e35b9020b16985eee26e942f9a3f6b045bc3809b/.github/workflows/test.yml#L29).
 
 ### Clang scan-build
 
@@ -183,7 +183,7 @@ master build. To view the defects, just request access; you will be approved.
 
 - To build Neovim with sanitizers enabled, use
   ```
-  rm -rf build && CMAKE_EXTRA_FLAGS="-DCMAKE_C_COMPILER=clang -DCLANG_ASAN_UBSAN=1" make
+  rm -rf build && CMAKE_EXTRA_FLAGS="-DCMAKE_C_COMPILER=clang -DENABLE_ASAN_UBSAN=1" make
   ```
 - When running Neovim, use
   ```
@@ -253,7 +253,8 @@ For managing includes in C files, use [include-what-you-use].
 - [Install include-what-you-use][include-what-you-use-install]
 - To see which includes needs fixing use the cmake preset `iwyu`:
   ```
-  cmake --workflow --preset iwyu
+  cmake --preset iwyu
+  cmake --build --preset iwyu
   ```
 - There's also a make target that automatically fixes the suggestions from
   IWYU:
@@ -293,7 +294,7 @@ If a function in your Lua module should not be documented (e.g. internal functio
 ---@private
 ```
 
-Mark functions that are deprecated as 
+Mark functions that are deprecated as
 ```
 ---@deprecated
 ```

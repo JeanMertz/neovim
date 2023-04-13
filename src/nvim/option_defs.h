@@ -92,8 +92,9 @@ typedef enum {
   "N:CursorLineNr,G:CursorLineSign,O:CursorLineFold" \
   "r:Question,s:StatusLine,S:StatusLineNC,c:VertSplit,t:Title,v:Visual,V:VisualNOS,w:WarningMsg," \
   "W:WildMenu,f:Folded,F:FoldColumn,A:DiffAdd,C:DiffChange,D:DiffDelete,T:DiffText,>:SignColumn," \
-  "-:Conceal,B:SpellBad,P:SpellCap,R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel,x:PmenuSbar," \
-  "X:PmenuThumb,*:TabLine,#:TabLineSel,_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn," \
+  "-:Conceal,B:SpellBad,P:SpellCap,R:SpellRare,L:SpellLocal,+:Pmenu,=:PmenuSel," \
+  "[:PmenuKind,]:PmenuKindSel,{:PmenuExtra,}:PmenuExtraSel,x:PmenuSbar,X:PmenuThumb," \
+  "*:TabLine,#:TabLineSel,_:TabLineFill,!:CursorColumn,.:CursorLine,o:ColorColumn," \
   "q:QuickFixLine,0:Whitespace,I:NormalNC"
 
 // Default values for 'errorformat'.
@@ -386,7 +387,6 @@ enum {
 
 // The following are actual variables for the options
 
-EXTERN long p_aleph;            // 'aleph'
 EXTERN char *p_ambw;            ///< 'ambiwidth'
 EXTERN int p_acd;               ///< 'autochdir'
 EXTERN int p_ai;                ///< 'autoindent'
@@ -544,8 +544,6 @@ EXTERN int p_hid;               // 'hidden'
 EXTERN char *p_hl;              // 'highlight'
 EXTERN int p_hls;               // 'hlsearch'
 EXTERN long p_hi;               // 'history'
-EXTERN int p_hkmap;             // 'hkmap'
-EXTERN int p_hkmapp;            // 'hkmapp'
 EXTERN int p_arshape;           // 'arabicshape'
 EXTERN int p_icon;              // 'icon'
 EXTERN char *p_iconstring;      // 'iconstring'
@@ -615,7 +613,6 @@ EXTERN char *p_nf;              ///< 'nrformats'
 EXTERN char *p_opfunc;          // 'operatorfunc'
 EXTERN char *p_para;            // 'paragraphs'
 EXTERN int p_paste;             // 'paste'
-EXTERN char *p_pt;              // 'pastetoggle'
 EXTERN char *p_pex;             // 'patchexpr'
 EXTERN char *p_pm;              // 'patchmode'
 EXTERN char *p_path;            // 'path'
@@ -996,7 +993,7 @@ typedef struct vimoption {
   char *fullname;        // full option name
   char *shortname;       // permissible abbreviation
   uint32_t flags;               // see below
-  char_u *var;             // global option: pointer to variable;
+  char *var;               // global option: pointer to variable;
                            // window-local option: VAR_WIN;
                            // buffer-local option: global value
   idopt_T indir;                // global option: PV_NONE;
@@ -1021,6 +1018,6 @@ typedef struct vimoption {
 
 // Options local to a window have a value local to a buffer and global to all
 // buffers.  Indicate this by setting "var" to VAR_WIN.
-#define VAR_WIN ((char_u *)-1)
+#define VAR_WIN ((char *)-1)
 
 #endif  // NVIM_OPTION_DEFS_H

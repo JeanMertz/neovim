@@ -1,6 +1,8 @@
 // This is an open source non-commercial project. Dear PVS-Studio, please check
 // it. PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
 
+/// Nvim's own UI client, which attaches to a child or remote Nvim server.
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -41,7 +43,7 @@ uint64_t ui_client_start_server(int argc, char **argv)
   varnumber_T exit_status;
   char **args = xmalloc(((size_t)(2 + argc)) * sizeof(char *));
   int args_idx = 0;
-  args[args_idx++] = xstrdup((const char *)get_vim_var_str(VV_PROGPATH));
+  args[args_idx++] = xstrdup(get_vim_var_str(VV_PROGPATH));
   args[args_idx++] = xstrdup("--embed");
   for (int i = 1; i < argc; i++) {
     args[args_idx++] = xstrdup(argv[i]);
@@ -153,7 +155,7 @@ UIClientHandler ui_client_get_redraw_handler(const char *name, size_t name_len, 
 
 /// Placeholder for _sync_ requests with 'redraw' method name
 ///
-/// async 'redraw' events, which are expected when nvim acts as an ui client.
+/// async 'redraw' events, which are expected when nvim acts as a ui client.
 /// get handled in msgpack_rpc/unpacker.c and directly dispatched to handlers
 /// of specific ui events, like ui_client_event_grid_resize and so on.
 Object handle_ui_client_redraw(uint64_t channel_id, Array args, Arena *arena, Error *error)

@@ -63,7 +63,6 @@
 #include "nvim/pos.h"
 #include "nvim/profile.h"
 #include "nvim/regexp.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/state.h"
 #include "nvim/strings.h"
@@ -189,8 +188,6 @@ static int cedit_key = -1;  ///< key value of 'cedit' option
 static handle_T cmdpreview_bufnr = 0;
 static long cmdpreview_ns = 0;
 
-static int cmd_hkmap = 0;  // Hebrew mapping during command line
-
 static void save_viewstate(win_T *wp, viewstate_T *vs)
   FUNC_ATTR_NONNULL_ALL
 {
@@ -298,7 +295,7 @@ static bool do_incsearch_highlighting(int firstc, int *search_delim, incsearch_s
     if (*p == '!') {
       p = skipwhite(p + 1);
     }
-    while (ASCII_ISALPHA(*(p = skipwhite((char *)p)))) {
+    while (ASCII_ISALPHA(*(p = skipwhite(p)))) {
       p++;
     }
     if (*p == NUL) {
@@ -680,11 +677,6 @@ static uint8_t *command_line_enter(int firstc, long count, int indent, bool clea
     s->break_ctrl_c = true;
   }
 
-  // start without Hebrew mapping for a command line
-  if (s->firstc == ':' || s->firstc == '=' || s->firstc == '>') {
-    cmd_hkmap = 0;
-  }
-
   init_ccline(s->firstc, s->indent);
   ccline.prompt_id = last_prompt_id++;
   ccline.level = cmdline_level;
@@ -913,6 +905,9 @@ theend:
   if (ui_has(kUICmdline)) {
     ui_call_cmdline_hide(ccline.level);
     msg_ext_clear_later();
+  }
+  if (!cmd_silent) {
+    status_redraw_all();  // redraw to show mode change
   }
 
   cmdline_level--;
@@ -1166,9 +1161,6 @@ static int command_line_execute(VimState *state, int key)
 
   if (KeyTyped) {
     s->some_key_typed = true;
-    if (cmd_hkmap) {
-      s->c = hkmap(s->c);
-    }
 
     if (cmdmsg_rl && !KeyStuffed) {
       // Invert horizontal movements and operations.  Only when
@@ -2101,7 +2093,6 @@ static int command_line_handle_key(CommandLineState *s)
     if (!p_ari) {
       break;
     }
-    cmd_hkmap = !cmd_hkmap;
     return command_line_not_changed(s);
 
   default:
@@ -2126,7 +2117,7 @@ static int command_line_handle_key(CommandLineState *s)
 
   // put the character in the command line
   if (IS_SPECIAL(s->c) || mod_mask != 0) {
-    put_on_cmdline((char *)get_special_key_name(s->c, mod_mask), -1, true);
+    put_on_cmdline(get_special_key_name(s->c, mod_mask), -1, true);
   } else {
     int j = utf_char2bytes(s->c, IObuff);
     IObuff[j] = NUL;                // exclude composing chars
@@ -2456,7 +2447,7 @@ static bool cmdpreview_may_show(CommandLineState *s)
   CpInfo cpinfo;
   bool icm_split = *p_icm == 's';  // inccommand=split
   buf_T *cmdpreview_buf;
-  win_T *cmdpreview_win;
+  win_T *cmdpreview_win = NULL;
 
   emsg_silent++;                 // Block error reporting as the command may be incomplete,
                                  // but still update v:errmsg
@@ -2693,7 +2684,7 @@ char *getcmdline_prompt(const int firstc, const char *const prompt, const int at
 /// Read the 'wildmode' option, fill wim_flags[].
 int check_opt_wim(void)
 {
-  char_u new_wim_flags[4];
+  uint8_t new_wim_flags[4];
   int i;
   int idx = 0;
 
@@ -2749,6 +2740,9 @@ bool text_locked(void)
   if (cmdwin_type != 0) {
     return true;
   }
+  if (expr_map_locked()) {
+    return true;
+  }
   return textlock != 0;
 }
 
@@ -2759,7 +2753,7 @@ void text_locked_msg(void)
   emsg(_(get_text_locked_msg()));
 }
 
-char *get_text_locked_msg(void)
+const char *get_text_locked_msg(void)
 {
   if (cmdwin_type != 0) {
     return e_cmdwin;
@@ -2953,7 +2947,7 @@ static void color_expr_cmdline(const CmdlineInfo *const colored_ccline,
 {
   ParserLine parser_lines[] = {
     {
-      .data = (const char *)colored_ccline->cmdbuff,
+      .data = colored_ccline->cmdbuff,
       .size = strlen(colored_ccline->cmdbuff),
       .allocated = false,
     },
@@ -3057,7 +3051,7 @@ static bool color_cmdline(CmdlineInfo *colored_ccline)
   bool can_free_cb = false;
   TryState tstate;
   Error err = ERROR_INIT;
-  const char *err_errmsg = (const char *)e_intern2;
+  const char *err_errmsg = e_intern2;
   bool dgc_ret = true;
   bool tl_ret = true;
 
@@ -3090,8 +3084,7 @@ static bool color_cmdline(CmdlineInfo *colored_ccline)
   }
   if (colored_ccline->cmdbuff[colored_ccline->cmdlen] != NUL) {
     arg_allocated = true;
-    arg.vval.v_string = xmemdupz((const char *)colored_ccline->cmdbuff,
-                                 (size_t)colored_ccline->cmdlen);
+    arg.vval.v_string = xmemdupz(colored_ccline->cmdbuff, (size_t)colored_ccline->cmdlen);
   }
   // msg_start() called by e.g. :echo may shift command-line to the first column
   // even though msg_silent is here. Two ways to workaround this problem without
@@ -3210,8 +3203,7 @@ color_cmdline_end:
   if (arg_allocated) {
     ccline_colors->cmdbuff = arg.vval.v_string;
   } else {
-    ccline_colors->cmdbuff = xmemdupz((const char *)colored_ccline->cmdbuff,
-                                      (size_t)colored_ccline->cmdlen);
+    ccline_colors->cmdbuff = xmemdupz(colored_ccline->cmdbuff, (size_t)colored_ccline->cmdlen);
   }
   tv_clear(&tv);
   return ret;
@@ -4252,7 +4244,7 @@ int get_list_range(char **str, int *num1, int *num2)
 
   *str = skipwhite((*str));
   if (**str == '-' || ascii_isdigit(**str)) {  // parse "from" part of range
-    vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0, false);
+    vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0, false, NULL);
     *str += len;
     *num1 = (int)num;
     first = true;
@@ -4260,7 +4252,7 @@ int get_list_range(char **str, int *num1, int *num2)
   *str = skipwhite((*str));
   if (**str == ',') {                   // parse "to" part of range
     *str = skipwhite((*str) + 1);
-    vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0, false);
+    vim_str2nr(*str, NULL, &len, 0, &num, NULL, 0, false, NULL);
     if (len > 0) {
       *num2 = (int)num;
       *str = skipwhite((*str) + len);
@@ -4280,7 +4272,7 @@ void cmdline_init(void)
 
 /// Check value of 'cedit' and set cedit_key.
 /// Returns NULL if value is OK, error message otherwise.
-char *check_cedit(void)
+const char *check_cedit(void)
 {
   if (*p_cedit == NUL) {
     cedit_key = -1;
@@ -4564,7 +4556,7 @@ bool is_in_cmdwin(void)
 char *script_get(exarg_T *const eap, size_t *const lenp)
   FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT FUNC_ATTR_MALLOC
 {
-  const char *const cmd = (const char *)eap->arg;
+  const char *const cmd = eap->arg;
 
   if (cmd[0] != '<' || cmd[1] != '<' || eap->getline == NULL) {
     *lenp = strlen(eap->arg);
@@ -4576,7 +4568,7 @@ char *script_get(exarg_T *const eap, size_t *const lenp)
     ga_init(&ga, 1, 0x400);
   }
 
-  const char *const end_pattern = (cmd[2] != NUL ? (const char *)skipwhite(cmd + 2) : ".");
+  const char *const end_pattern = (cmd[2] != NUL ? skipwhite(cmd + 2) : ".");
   for (;;) {
     char *const theline = eap->getline(eap->cstack->cs_looplevel > 0 ? -1 : NUL, eap->cookie, 0,
                                        true);

@@ -77,7 +77,6 @@
 #include "nvim/profile.h"
 #include "nvim/quickfix.h"
 #include "nvim/regexp.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/spell.h"
 #include "nvim/strings.h"
@@ -150,8 +149,8 @@ void do_ascii(const exarg_T *const eap)
     char buf1[20];
     if (vim_isprintc_strict(c) && (c < ' ' || c > '~')) {
       char buf3[7];
-      transchar_nonprint(curbuf, (char_u *)buf3, c);
-      vim_snprintf(buf1, sizeof(buf1), "  <%s>", (char *)buf3);
+      transchar_nonprint(curbuf, buf3, c);
+      vim_snprintf(buf1, sizeof(buf1), "  <%s>", buf3);
     } else {
       buf1[0] = NUL;
     }
@@ -580,7 +579,7 @@ void ex_sort(exarg_T *eap)
     }
 
     if (sort_nr || sort_flt) {
-      // Make sure vim_str2nr doesn't read any digits past the end
+      // Make sure vim_str2nr() doesn't read any digits past the end
       // of the match, by temporarily terminating the string there
       s2 = s + end_col;
       c = *s2;
@@ -605,7 +604,7 @@ void ex_sort(exarg_T *eap)
         } else {
           nrs[lnum - eap->line1].st_u.num.is_number = true;
           vim_str2nr(s, NULL, NULL, sort_what,
-                     &nrs[lnum - eap->line1].st_u.num.value, NULL, 0, false);
+                     &nrs[lnum - eap->line1].st_u.num.value, NULL, 0, false, NULL);
         }
       } else {
         s = skipwhite(p);
@@ -1362,12 +1361,12 @@ char *make_filter_cmd(char *cmd, char *itmp, char *otmp)
 {
   bool is_fish_shell =
 #if defined(UNIX)
-    strncmp((char *)invocation_path_tail(p_sh, NULL), "fish", 4) == 0;
+    strncmp(invocation_path_tail(p_sh, NULL), "fish", 4) == 0;
 #else
     false;
 #endif
-  bool is_pwsh = strncmp((char *)invocation_path_tail(p_sh, NULL), "pwsh", 4) == 0
-                 || strncmp((char *)invocation_path_tail(p_sh, NULL), "powershell",
+  bool is_pwsh = strncmp(invocation_path_tail(p_sh, NULL), "pwsh", 4) == 0
+                 || strncmp(invocation_path_tail(p_sh, NULL), "powershell",
                             10) == 0;
 
   size_t len = strlen(cmd) + 1;  // At least enough space for cmd + NULL.
@@ -1389,7 +1388,7 @@ char *make_filter_cmd(char *cmd, char *itmp, char *otmp)
   if (is_pwsh) {
     if (itmp != NULL) {
       xstrlcpy(buf, "& { Get-Content ", len - 1);  // FIXME: should we add "-Encoding utf8"?
-      xstrlcat(buf, (const char *)itmp, len - 1);
+      xstrlcat(buf, itmp, len - 1);
       xstrlcat(buf, " | & ", len - 1);  // FIXME: add `&` ourself or leave to user?
       xstrlcat(buf, cmd, len - 1);
       xstrlcat(buf, " }", len - 1);
@@ -1410,7 +1409,7 @@ char *make_filter_cmd(char *cmd, char *itmp, char *otmp)
 
     if (itmp != NULL) {
       xstrlcat(buf, " < ", len - 1);
-      xstrlcat(buf, (const char *)itmp, len - 1);
+      xstrlcat(buf, itmp, len - 1);
     }
 #else
     // For shells that don't understand braces around commands, at least allow
@@ -1427,9 +1426,9 @@ char *make_filter_cmd(char *cmd, char *itmp, char *otmp)
         }
       }
       xstrlcat(buf, " < ", len);
-      xstrlcat(buf, (const char *)itmp, len);
+      xstrlcat(buf, itmp, len);
       if (*p_shq == NUL) {
-        const char *const p = find_pipe((const char *)cmd);
+        const char *const p = find_pipe(cmd);
         if (p != NULL) {
           xstrlcat(buf, " ", len - 1);  // Insert a space before the '|' for DOS
           xstrlcat(buf, p, len - 1);
@@ -2658,7 +2657,7 @@ int do_ecmd(int fnum, char *ffname, char *sfname, exarg_T *eap, linenr_T newlnum
       msg_scroll = false;
     }
     if (!msg_scroll) {          // wait a bit when overwriting an error msg
-      check_for_delay(false);
+      msg_check_for_delay(false);
     }
     msg_start();
     msg_scroll = msg_scroll_save;
@@ -3747,6 +3746,7 @@ static int do_sub(exarg_T *eap, proftime_T timeout, long cmdpreview_ns, handle_T
               update_topline(curwin);
               validate_cursor();
               redraw_later(curwin, UPD_SOME_VALID);
+              show_cursor_info_later(true);
               update_screen();
               highlight_match = false;
               redraw_later(curwin, UPD_SOME_VALID);
@@ -3765,7 +3765,6 @@ static int do_sub(exarg_T *eap, proftime_T timeout, long cmdpreview_ns, handle_T
                         _("replace with %s (y/n/a/q/l/^E/^Y)?"), sub);
               msg_no_more = false;
               msg_scroll = (int)i;
-              show_cursor_info(true);
               if (!ui_has(kUIMessages)) {
                 ui_cursor_goto(msg_row, msg_col);
               }
@@ -4289,7 +4288,7 @@ bool do_sub_msg(bool count_only)
                                 "%" PRId64 " matches on %" PRId64 " lines", sub_nsubs)
                      : NGETTEXT("%" PRId64 " substitution on %" PRId64 " lines",
                                 "%" PRId64 " substitutions on %" PRId64 " lines", sub_nsubs);
-    vim_snprintf_add((char *)msg_buf, sizeof(msg_buf),
+    vim_snprintf_add(msg_buf, sizeof(msg_buf),
                      NGETTEXT(msg_single, msg_plural, sub_nlines),
                      (int64_t)sub_nsubs, (int64_t)sub_nlines);
     if (msg(msg_buf)) {
@@ -4743,10 +4742,10 @@ void ex_oldfiles(exarg_T *eap)
     }
     nr++;
     const char *fname = tv_get_string(TV_LIST_ITEM_TV(li));
-    if (!message_filtered((char *)fname)) {
+    if (!message_filtered(fname)) {
       msg_outnum(nr);
       msg_puts(": ");
-      msg_outtrans((char *)tv_get_string(TV_LIST_ITEM_TV(li)));
+      msg_outtrans(tv_get_string(TV_LIST_ITEM_TV(li)));
       msg_clr_eos();
       msg_putchar('\n');
       os_breakcheck();

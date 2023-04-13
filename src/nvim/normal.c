@@ -62,7 +62,6 @@
 #include "nvim/plines.h"
 #include "nvim/profile.h"
 #include "nvim/quickfix.h"
-#include "nvim/screen.h"
 #include "nvim/search.h"
 #include "nvim/spell.h"
 #include "nvim/spellfile.h"
@@ -118,7 +117,7 @@ static inline void normal_state_init(NormalState *s)
 // n_*(): functions called to handle Normal mode commands.
 // v_*(): functions called to handle Visual mode commands.
 
-static char *e_noident = N_("E349: No identifier under cursor");
+static const char *e_noident = N_("E349: No identifier under cursor");
 
 /// Function to be called for a Normal or Visual mode command.
 /// The argument is a cmdarg_T.
@@ -669,7 +668,7 @@ static void normal_redraw_mode_message(NormalState *s)
     keep_msg = kmsg;
 
     kmsg = xstrdup(keep_msg);
-    msg_attr((const char *)kmsg, keep_msg_attr);
+    msg_attr(kmsg, keep_msg_attr);
     xfree(kmsg);
   }
   setcursor();
@@ -769,10 +768,6 @@ static void normal_get_additional_char(NormalState *s)
 
       // adjust chars > 127, except after "tTfFr" commands
       LANGMAP_ADJUST(*cp, !lang);
-      // adjust Hebrew mapped char
-      if (p_hkmap && lang && KeyTyped) {
-        *cp = hkmap(*cp);
-      }
     }
 
     // When the next character is CTRL-\ a following CTRL-N means the
@@ -967,7 +962,8 @@ normal_end:
   may_trigger_modechanged();
   // Redraw the cursor with another shape, if we were in Operator-pending
   // mode or did a replace command.
-  if (s->c || s->ca.cmdchar == 'r') {
+  if (s->c || s->ca.cmdchar == 'r'
+      || (s->ca.cmdchar == 'g' && s->ca.nchar == 'r')) {
     ui_cursor_shape();                  // may show different cursor shape
   }
 
@@ -1166,7 +1162,7 @@ static int normal_execute(VimState *state, int key)
 
   State = MODE_NORMAL;
 
-  if (s->ca.nchar == ESC) {
+  if (s->ca.nchar == ESC || s->ca.extra_char == ESC) {
     clearop(&s->oa);
     s->command_finished = true;
     goto finish;
@@ -1309,16 +1305,20 @@ static void normal_redraw(NormalState *s)
   update_topline(curwin);
   validate_cursor();
 
+  show_cursor_info_later(false);
+
   if (VIsual_active) {
     redraw_curbuf_later(UPD_INVERTED);  // update inverted part
-    update_screen();
-  } else if (must_redraw) {
-    update_screen();
-  } else if (redraw_cmdline || clear_cmdline || redraw_mode) {
-    showmode();
   }
 
-  redraw_statuslines();
+  if (must_redraw) {
+    update_screen();
+  } else {
+    redraw_statuslines();
+    if (redraw_cmdline || clear_cmdline || redraw_mode) {
+      showmode();
+    }
+  }
 
   if (need_maketitle) {
     maketitle();
@@ -1336,7 +1336,7 @@ static void normal_redraw(NormalState *s)
     // check for duplicates.  Never put this message in
     // history.
     msg_hist_off = true;
-    msg_attr((const char *)p, keep_msg_attr);
+    msg_attr(p, keep_msg_attr);
     msg_hist_off = false;
     xfree(p);
   }
@@ -1351,7 +1351,6 @@ static void normal_redraw(NormalState *s)
   did_emsg = false;
   msg_didany = false;  // reset lines_left in msg_start()
   may_clear_sb_text();  // clear scroll-back text on next msg
-  show_cursor_info(false);
 
   setcursor();
 }
@@ -1378,6 +1377,7 @@ static int normal_check(VimState *state)
   // update cursor and redraw.
   if (skip_redraw || exmode_active) {
     skip_redraw = false;
+    setcursor();
   } else if (do_redraw || stuff_empty()) {
     // Ensure curwin->w_topline and curwin->w_leftcol are up to date
     // before triggering a WinScrolled autocommand.
@@ -2479,19 +2479,10 @@ static bool nv_screengo(oparg_T *oap, int dir, long dist)
           curwin->w_curswant -= width2;
         } else {
           // to previous line
-
-          // Move to the start of a closed fold.  Don't do that when
-          // 'foldopen' contains "all": it will open in a moment.
-          if (!(fdo_flags & FDO_ALL)) {
-            (void)hasFolding(curwin->w_cursor.lnum,
-                             &curwin->w_cursor.lnum, NULL);
-          }
-          if (curwin->w_cursor.lnum == 1) {
+          if (!cursor_up_inner(curwin, 1)) {
             retval = false;
             break;
           }
-          curwin->w_cursor.lnum--;
-
           linelen = linetabsize(get_cursor_line_ptr());
           if (linelen > width1) {
             int w = (((linelen - width1 - 1) / width2) + 1) * width2;
@@ -2511,15 +2502,10 @@ static bool nv_screengo(oparg_T *oap, int dir, long dist)
           curwin->w_curswant += width2;
         } else {
           // to next line
-
-          // Move to the end of a closed fold.
-          (void)hasFolding(curwin->w_cursor.lnum, NULL,
-                           &curwin->w_cursor.lnum);
-          if (curwin->w_cursor.lnum == curbuf->b_ml.ml_line_count) {
+          if (!cursor_down_inner(curwin, 1)) {
             retval = false;
             break;
           }
-          curwin->w_cursor.lnum++;
           curwin->w_curswant %= width2;
           // Check if the cursor has moved below the number display
           // when width1 < width2 (with cpoptions+=n). Subtract width2
@@ -3526,7 +3512,7 @@ static void nv_ident(cmdarg_T *cap)
     ptr = xstrnsave(ptr, n);
     if (kp_ex) {
       // Escape the argument properly for an Ex command
-      p = vim_strsave_fnameescape((const char *)ptr, VSE_NONE);
+      p = vim_strsave_fnameescape(ptr, VSE_NONE);
     } else {
       // Escape the argument properly for a shell command
       p = vim_strsave_shellescape(ptr, true, true);
@@ -4734,6 +4720,11 @@ static void nv_vreplace(cmdarg_T *cap)
     if (cap->extra_char == Ctrl_V) {          // get another character
       cap->extra_char = get_literal(false);
     }
+    if (cap->extra_char < ' ') {
+      // Prefix a control character with CTRL-V to avoid it being used as
+      // a command.
+      stuffcharReadbuff(Ctrl_V);
+    }
     stuffcharReadbuff(cap->extra_char);
     stuffcharReadbuff(ESC);
     if (virtual_active()) {
@@ -5343,7 +5334,7 @@ static void nv_g_dollar_cmd(cmdarg_T *cap)
     coladvance((colnr_T)i);
 
     // if the character doesn't fit move one back
-    if (curwin->w_cursor.col > 0 && utf_ptr2cells((const char *)get_cursor_pos_ptr()) > 1) {
+    if (curwin->w_cursor.col > 0 && utf_ptr2cells(get_cursor_pos_ptr()) > 1) {
       colnr_T vcol;
 
       getvvcol(curwin, &curwin->w_cursor, NULL, NULL, &vcol);

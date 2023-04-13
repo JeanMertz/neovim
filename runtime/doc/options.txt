@@ -401,20 +401,15 @@ the system, mostly it is something like 256 or 1024 characters.
 ==============================================================================
 2. Automatically setting options			*auto-setting*
 
-Besides changing options with the ":set" command, there are three alternatives
-to set options automatically for one or more files:
+Besides changing options with the ":set" command, you can set options
+automatically in various ways:
 
-1. When starting Vim initializations are read from various places.  See
-   |initialization|.  Most of them are performed for all editing sessions,
-   and some of them depend on the directory where Vim is started.
-   You can create an initialization file with |:mkvimrc|, |:mkview| and
-   |:mksession|.
-2. If you start editing a new file, the automatic commands are executed.
-   This can be used to set options for files matching a particular pattern and
-   many other things.  See |autocommand|.
-3. If you start editing a new file, and the 'modeline' option is on, a
-   number of lines at the beginning and end of the file are checked for
-   modelines.  This is explained here.
+1. With a |config| file or a |startup| argument. You can create an
+   initialization file with |:mkvimrc|, |:mkview| and |:mksession|.
+2. |autocommand|s executed when you edit a file.
+3. ".nvim.lua" files in the current directory, if 'exrc' is enabled.
+4. |editorconfig| in the current buffer's directory or ancestors.
+5. 'modeline' settings found at the beginning or end of the file. See below.
 
 					*modeline* *vim:* *vi:* *ex:* *E520*
 There are two forms of modelines.  The first form:
@@ -580,16 +575,6 @@ supported use something like this: >
 							*E355*
 A jump table for the options with a short description can be found at |Q_op|.
 
-					*'aleph'* *'al'* *aleph* *Aleph*
-'aleph' 'al'		number	(default 224)
-			global
-	The ASCII code for the first letter of the Hebrew alphabet.  The
-	routine that maps the keyboard in Hebrew mode, both in Insert mode
-	(when hkmap is set) and on the command-line (when hitting CTRL-_)
-	outputs the Hebrew characters in the range [aleph..aleph+26].
-	aleph=128 applies to PC code, and aleph=224 applies to ISO 8859-8.
-	See |rileft.txt|.
-
 			*'allowrevins'* *'ari'* *'noallowrevins'* *'noari'*
 'allowrevins' 'ari'	boolean	(default off)
 			global
@@ -691,8 +676,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	line.
 	When 'smartindent' or 'cindent' is on the indent is changed in
 	a different way.
-	The 'autoindent' option is reset when the 'paste' option is set and
-	restored when 'paste' is reset.
 	{small difference from Vi: After the indent is deleted when typing
 	<Esc> or <CR>, the cursor position when moving up or down is after the
 	deleted indent; Vi puts the cursor somewhere in the deleted indent}.
@@ -1186,7 +1169,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 			case mapping, the current locale is not effective.
 			This probably only matters for Turkish.
 
-						*'cdhome'* *'cdh'*
+				*'cdhome'* *'cdh'* *'nocdhome'* *'nocdh'*
 'cdhome' 'cdh'		boolean	(default: off)
 			global
 	When on, |:cd|, |:tcd| and |:lcd| without an argument changes the
@@ -1281,7 +1264,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	See |C-indenting|.
 	When you don't like the way 'cindent' works, try the 'smartindent'
 	option or 'indentexpr'.
-	This option is not used when 'paste' is set.
 
 							*'cinkeys'* *'cink'*
 'cinkeys' 'cink'	string	(default "0{,0},0),0],:,0#,!^F,o,O,e")
@@ -1408,7 +1390,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	insert a space.
 
 					*'commentstring'* *'cms'* *E537*
-'commentstring' 'cms'	string	(default "/*%s*/")
+'commentstring' 'cms'	string	(default "")
 			local to buffer
 	A template for a comment.  The "%s" in the value is replaced with the
 	comment text.  Currently only used to add markers for folding, see
@@ -2261,21 +2243,17 @@ A jump table for the options with a short description can be found at |Q_op|.
 	<Tab>.  Spaces are used in indents with the '>' and '<' commands and
 	when 'autoindent' is on.  To insert a real tab when 'expandtab' is
 	on, use CTRL-V<Tab>.  See also |:retab| and |ins-expandtab|.
-	This option is reset when the 'paste' option is set and restored when
-	the 'paste' option is reset.
 
 					*'exrc'* *'ex'* *'noexrc'* *'noex'*
 'exrc' 'ex'		boolean (default off)
 			global
-	Enables the reading of .nvim.lua, .nvimrc, and .exrc files in the current
-	directory.
+	Automatically execute .nvim.lua, .nvimrc, and .exrc files in the
+	current directory, if the file is in the |trust| list. Use |:trust| to
+	manage trusted files. See also |vim.secure.read()|.
 
-	The file is only sourced if the user indicates the file is trusted. If
-	it is, the SHA256 hash of the file contents and the full path of the
-	file are persisted to a trust database. The user is only prompted
-	again if the file contents change. See |vim.secure.read()|.
-
-	Use |:trust| to manage the trusted file database.
+	Compare 'exrc' to |editorconfig|:
+	- 'exrc' can execute any code; editorconfig only specifies settings.
+	- 'exrc' is Nvim-specific; editorconfig works in other editors.
 
 	This option cannot be set from a |modeline| or in the |sandbox|, for
 	security reasons.
@@ -2766,9 +2744,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 'formatoptions' 'fo'	string (default: "tcqj")
 			local to buffer
 	This is a sequence of letters which describes how automatic
-	formatting is to be done.  See |fo-table|.  When the 'paste' option is
-	on, no formatting is done (like 'formatoptions' is empty).  Commas can
-	be inserted for readability.
+	formatting is to be done.  See |fo-table|.  Commas can be inserted for
+	readability.
 	To avoid problems with flags that are added in the future, use the
 	"+=" and "-=" feature of ":set" |add-option-flags|.
 
@@ -3202,20 +3179,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	each of these histories (see |cmdline-editing|).
 	The maximum value is 10000.
 
-					 *'hkmap'* *'hk'* *'nohkmap'* *'nohk'*
-'hkmap' 'hk'		boolean (default off)
-			global
-	When on, the keyboard is mapped for the Hebrew character set.
-	Normally you would set 'allowrevins' and use CTRL-_ in insert mode to
-	toggle this option.  See |rileft.txt|.
-
-				 *'hkmapp'* *'hkp'* *'nohkmapp'* *'nohkp'*
-'hkmapp' 'hkp'		boolean (default off)
-			global
-	When on, phonetic keyboard mapping is used.  'hkmap' must also be on.
-	This is useful if you have a non-Hebrew keyboard.
-	See |rileft.txt|.
-
 				 *'hlsearch'* *'hls'* *'nohlsearch'* *'nohls'*
 'hlsearch' 'hls'	boolean	(default on)
 			global
@@ -3423,7 +3386,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	When this option is not empty, it overrules the 'cindent' and
 	'smartindent' indenting.  When 'lisp' is set, this option is
 	is only used when 'lispoptions' contains "expr:1".
-	When 'paste' is set this option is not used for indenting.
 	The expression is evaluated with |v:lnum| set to the line number for
 	which the indent is to be computed.  The cursor is also in this line
 	when the expression is evaluated (but it may be moved around).
@@ -3792,7 +3754,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	The '-' character is included in keyword characters.  Redefines the
 	"=" operator to use this same indentation algorithm rather than
 	calling an external program if 'equalprg' is empty.
-	This option is not used when 'paste' is set.
 
 						*'lispoptions'* *'lop'*
 'lispoptions' 'lop'	string	(default "")
@@ -4291,7 +4252,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 
 	The 'mousemodel' option is set by the |:behave| command.
 
-						*'mousemoveevent'* *'mousemev'*
+	      *'mousemoveevent'* *'mousemev'* *'nomousemoveevent'* *'nomousemev'*
 'mousemoveevent' 'mousemev'  boolean	(default off)
 			global
 	When on, mouse move events are delivered to the input queue and are
@@ -4504,77 +4465,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 			global
 	Specifies the nroff macros that separate paragraphs.  These are pairs
 	of two letters (see |object-motions|).
-
-						*'paste'* *'nopaste'*
-'paste'			boolean	(default off)
-			global
-	This option is obsolete; |bracketed-paste-mode| is built-in.
-
-	Put Vim in Paste mode.  This is useful if you want to cut or copy
-	some text from one window and paste it in Vim.  This will avoid
-	unexpected effects.
-	Setting this option is useful when using Vim in a terminal, where Vim
-	cannot distinguish between typed text and pasted text.  In the GUI, Vim
-	knows about pasting and will mostly do the right thing without 'paste'
-	being set.  The same is true for a terminal where Vim handles the
-	mouse clicks itself.
-	This option is reset when starting the GUI.  Thus if you set it in
-	your vimrc it will work in a terminal, but not in the GUI.  Setting
-	'paste' in the GUI has side effects: e.g., the Paste toolbar button
-	will no longer work in Insert mode, because it uses a mapping.
-	When the 'paste' option is switched on (also when it was already on):
-		- mapping in Insert mode and Command-line mode is disabled
-		- abbreviations are disabled
-		- 'autoindent' is reset
-		- 'expandtab' is reset
-		- 'hkmap' is reset
-		- 'revins' is reset
-		- 'ruler' is reset
-		- 'showmatch' is reset
-		- 'smarttab' is reset
-		- 'softtabstop' is set to 0
-		- 'textwidth' is set to 0
-		- 'wrapmargin' is set to 0
-		- 'varsofttabstop' is made empty
-	These options keep their value, but their effect is disabled:
-		- 'cindent'
-		- 'formatoptions' is used like it is empty
-		- 'indentexpr'
-		- 'lisp'
-		- 'smartindent'
-	NOTE: When you start editing another file while the 'paste' option is
-	on, settings from the modelines or autocommands may change the
-	settings again, causing trouble when pasting text.  You might want to
-	set the 'paste' option again.
-	When the 'paste' option is reset the mentioned options are restored to
-	the value before the moment 'paste' was switched from off to on.
-	Resetting 'paste' before ever setting it does not have any effect.
-	Since mapping doesn't work while 'paste' is active, you need to use
-	the 'pastetoggle' option to toggle the 'paste' option with some key.
-
-						*'pastetoggle'* *'pt'*
-'pastetoggle' 'pt'	string	(default "")
-			global
-	When non-empty, specifies the key sequence that toggles the 'paste'
-	option.  This is like specifying a mapping: >
-	    :map {keys} :set invpaste<CR>
-<	Where {keys} is the value of 'pastetoggle'.
-	The difference is that it will work even when 'paste' is set.
-	'pastetoggle' works in Insert mode and Normal mode, but not in
-	Command-line mode.
-	Mappings are checked first, thus overrule 'pastetoggle'.  However,
-	when 'paste' is on mappings are ignored in Insert mode, thus you can do
-	this: >
-	    :map <F10> :set paste<CR>
-	    :map <F11> :set nopaste<CR>
-	    :imap <F10> <C-O>:set paste<CR>
-	    :imap <F11> <nop>
-	    :set pastetoggle=<F11>
-<	This will make <F10> start paste mode and <F11> stop paste mode.
-	Note that typing <F10> in paste mode inserts "<F10>", since in paste
-	mode everything is inserted literally, except the 'pastetoggle' key
-	sequence.
-	When the value has several bytes 'ttimeoutlen' applies.
 
 						*'pex'* *'patchexpr'*
 'patchexpr' 'pex'	string	(default "")
@@ -4858,8 +4748,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	Inserting characters in Insert mode will work backwards.  See "typing
 	backwards" |ins-reverse|.  This option can be toggled with the CTRL-_
 	command in Insert mode, when 'allowrevins' is set.
-	This option is reset when 'paste' is set and restored when 'paste' is
-	reset.
 
 				 *'rightleft'* *'rl'* *'norightleft'* *'norl'*
 'rightleft' 'rl'	boolean	(default off)
@@ -4908,8 +4796,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	separated with a dash.
 	For an empty line "0-1" is shown.
 	For an empty buffer the line number will also be zero: "0,0-1".
-	This option is reset when 'paste' is set and restored when 'paste' is
-	reset.
 	If you don't want to see the ruler all the time but want to know where
 	you are, use "g CTRL-G" |g_CTRL-G|.
 
@@ -4960,7 +4846,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	  pack/		packages |:packadd|
 	  parser/	|treesitter| syntax parsers
 	  plugin/	plugin scripts |write-plugin|
-	  query/	|treesitter| queries
+	  queries/	|treesitter| queries
 	  rplugin/	|remote-plugin| scripts
 	  spell/	spell checking files |spell|
 	  syntax/	syntax files |mysyntaxfile|
@@ -5349,9 +5235,9 @@ A jump table for the options with a short description can be found at |Q_op|.
 							*shell-powershell*
 	To use PowerShell: >
 		let &shell = executable('pwsh') ? 'pwsh' : 'powershell'
-		let &shellcmdflag = '-NoLogo -NoProfile -ExecutionPolicy RemoteSigned -Command [Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;'
-		let &shellredir = '2>&1 | Out-File -Encoding UTF8 %s; exit $LastExitCode'
-		let &shellpipe = '2>&1 | Out-File -Encoding UTF8 %s; exit $LastExitCode'
+		let &shellcmdflag = '-NoLogo -ExecutionPolicy RemoteSigned -Command [Console]::InputEncoding=[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();$PSDefaultParameterValues[''Out-File:Encoding'']=''utf8'';'
+		let &shellredir = '2>&1 | %%{ "$_" } | Out-File %s; exit $LastExitCode'
+		let &shellpipe  = '2>&1 | %%{ "$_" } | Tee-Object %s; exit $LastExitCode'
 		set shellquote= shellxquote=
 
 <	This option cannot be set from a |modeline| or in the |sandbox|, for
@@ -5373,8 +5259,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	security reasons.
 
 						*'shellpipe'* *'sp'*
-'shellpipe' 'sp'	string	(default ">", ">%s 2>&1", "| tee", "|& tee" or
-				 "2>&1| tee")
+'shellpipe' 'sp'	string	(default ">", "| tee", "|& tee" or "2>&1| tee")
 			global
 	String to be used to put the output of the ":make" command in the
 	error file.  See also |:make_makeprg|.  See |option-backslash| about
@@ -5382,8 +5267,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 	The name of the temporary file can be represented by "%s" if necessary
 	(the file name is appended automatically if no %s appears in the value
 	of this option).
-	For MS-Windows the default is ">%s 2>&1".  The output is directly
-	saved in a file and not echoed to the screen.
+	For MS-Windows the default is "2>&1| tee".  The stdout and stderr are
+	saved in a file and echoed to the screen.
 	For Unix the default is "| tee".  The stdout of the compiler is saved
 	in a file and echoed to the screen.  If the 'shell' option is "csh" or
 	"tcsh" after initializations, the default becomes "|& tee".  If the
@@ -5550,7 +5435,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 	  A	don't give the "ATTENTION" message when an existing	*shm-A*
 		swap file is found
 	  I	don't give the intro message when starting Vim,		*shm-I*
-	  	see |:intro|
+		see |:intro|
 	  c	don't give |ins-completion-menu| messages; for		*shm-c*
 		example, "-- XXX completion (YYY)", "match 1 of 2", "The only
 		match", "Pattern not found", "Back at original", etc.
@@ -5559,8 +5444,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 	  q	use "recording" instead of "recording @a"		*shm-q*
 	  F	don't give the file info when editing a file, like	*shm-F*
 		`:silent` was used for the command
-	  S     do not show search count message when searching, e.g.	*shm-S*
-	        "[1/5]"
+	  S	do not show search count message when searching, e.g.	*shm-S*
+		"[1/5]"
 
 	This gives you the opportunity to avoid that a change between buffers
 	requires you to hit <Enter>, but still gives as useful a message as
@@ -5641,8 +5526,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	show the match can be set with 'matchtime'.
 	A Beep is given if there is no match (no matter if the match can be
 	seen or not).
-	This option is reset when 'paste' is set and restored when 'paste' is
-	reset.
 	When the 'm' flag is not included in 'cpoptions', typing a character
 	will immediately move the cursor back to where it belongs.
 	See the "sm" field in 'guicursor' for setting the cursor shape and
@@ -5709,7 +5592,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 'signcolumn' 'scl'	string	(default "auto")
 			local to window
 	When and how to draw the signcolumn. Valid values are:
-	   "auto"   	only when there is a sign to display
+	   "auto"	only when there is a sign to display
 	   "auto:[1-9]" resize to accommodate multiple signs up to the
 	                given number (maximum 9), e.g. "auto:4"
 	   "auto:[1-8]-[2-9]"
@@ -5718,8 +5601,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 			at least the given minimum (maximum 8) fixed
 			space. The minimum number should always be less
 			than the maximum number, e.g. "auto:2-5"
-	   "no"	    	never
-	   "yes"    	always
+	   "no"		never
+	   "yes"	always
 	   "yes:[1-9]"  always, with fixed space for signs up to the given
 	                number (maximum 9), e.g. "yes:3"
 	   "number"	display signs in the 'number' column. If the number
@@ -5764,8 +5647,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	mapping: ":inoremap # X^H#", where ^H is entered with CTRL-V CTRL-H.
 	When using the ">>" command, lines starting with '#' are not shifted
 	right.
-	This option is reset when 'paste' is set and restored when 'paste' is
-	reset.
 
 				 *'smarttab'* *'sta'* *'nosmarttab'* *'nosta'*
 'smarttab' 'sta'	boolean	(default on)
@@ -5780,8 +5661,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	What gets inserted (a <Tab> or spaces) depends on the 'expandtab'
 	option.  Also see |ins-expandtab|.  When 'expandtab' is not set, the
 	number of spaces is minimized by using <Tab>s.
-	This option is reset when 'paste' is set and restored when 'paste' is
-	reset.
 
 					*'softtabstop'* *'sts'*
 'softtabstop' 'sts'	number	(default 0)
@@ -5794,8 +5673,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	commands like "x" still work on the actual characters.
 	When 'sts' is zero, this feature is off.
 	When 'sts' is negative, the value of 'shiftwidth' is used.
-	'softtabstop' is set to 0 when the 'paste' option is set and restored
-	when 'paste' is reset.
 	See also |ins-expandtab|.  When 'expandtab' is not set, the number of
 	spaces is minimized by using <Tab>s.
 	The 'L' flag in 'cpoptions' changes how tabs are used when 'list' is
@@ -6199,6 +6076,8 @@ A jump table for the options with a short description can be found at |Q_op|.
 	         is a bug that denotes that new mouse button recognition was 
 	         added without modifying code that reacts on mouse clicks on 
 	         this label.
+	      Use |getmousepos()|.winid in the specified function to get the
+	      corresponding window id of the clicked item.
 	< -   Where to truncate line if too long.  Default is at the start.
 	      No width fields allowed.
 	= -   Separation point between alignment sections.  Each section will
@@ -6608,8 +6487,6 @@ A jump table for the options with a short description can be found at |Q_op|.
 	Maximum width of text that is being inserted.  A longer line will be
 	broken after white space to get this width.  A zero value disables
 	this.
-	'textwidth' is set to 0 when the 'paste' option is set and restored
-	when 'paste' is reset.
 	When 'textwidth' is zero, 'wrapmargin' may be used.  See also
 	'formatoptions' and |ins-textwidth|.
 	When 'formatexpr' is set it will be used to break the line.
@@ -7379,7 +7256,7 @@ A jump table for the options with a short description can be found at |Q_op|.
 						*'writedelay'* *'wd'*
 'writedelay' 'wd'	number	(default 0)
 			global
-	Only takes effect toghether with 'redrawdebug'.
+	Only takes effect together with 'redrawdebug'.
 	The number of milliseconds to wait after each line or each flush
 
  vim:tw=78:ts=8:noet:ft=help:norl:
