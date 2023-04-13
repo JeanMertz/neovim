@@ -1753,8 +1753,8 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
 
       if (has_decor && v >= 0) {
         bool selected = (area_active || (area_highlighting && noinvcur
-                                         && (colnr_T)vcol == wp->w_virtcol));
-        extmark_attr = decor_redraw_col(wp->w_buffer, (colnr_T)v, off,
+                                         && (colnr_T)wlv.vcol == wp->w_virtcol));
+        extmark_attr = decor_redraw_col(wp->w_buffer, (colnr_T)v, wlv.off,
                                             selected, &decor_state);
 
         // we could already be inside an existing virt_line with multiple chunks
@@ -1778,7 +1778,7 @@ int win_line(win_T *wp, linenr_T lnum, int startrow, int endrow, bool nochange, 
 
         if (wlv.n_extra <= 0 && virt_inline_i < kv_size(virt_inline)) {
           VirtTextChunk vtc = kv_A(virt_inline, virt_inline_i);
-          wlv.p_extra = (char_u *)vtc.text;
+          wlv.p_extra = (char *)vtc.text;
           wlv.n_extra = (int)strlen(wlv.p_extra);
           wlv.c_extra = NUL;
           wlv.c_final = NUL;
