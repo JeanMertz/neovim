@@ -18,6 +18,13 @@ The following changes may require adaptations in user config or plugins.
 • "#" followed by a digit no longer stands for a function key at the start of
   the lhs of a mapping.
 
+• `:behave` was removed. if you used `:behave mswin`, the following is equivalent: >vim
+
+    set selection=exclusive
+    set selectmode=mouse,key
+    set mousemodel=popup
+    set keymodel=startsel,stopsel
+
 ==============================================================================
 ADDED FEATURES                                                     *news-added*
 
@@ -30,7 +37,7 @@ CHANGED FEATURES                                                 *news-changed*
 
 The following changes to existing APIs or features add new behavior.
 
-• ...
+• |vim.region()| can use a string accepted by |getpos()| as position.
 
 ==============================================================================
 REMOVED FEATURES                                                 *news-removed*
@@ -38,6 +45,9 @@ REMOVED FEATURES                                                 *news-removed*
 The following deprecated functions or APIs were removed.
 
 • ...
+
+• Vimball support is removed.
+  - :Vimuntar command removed.
 
 ==============================================================================
 DEPRECATIONS                                                *news-deprecations*
